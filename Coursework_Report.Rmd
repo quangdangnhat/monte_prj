@@ -1,0 +1,338 @@
+---
+title: "Financial Econometrics Coursework 2025-2026"
+author: "Student Name"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+header-includes:
+  - \usepackage{amsmath}
+  - \usepackage{amssymb}
+  - \usepackage{booktabs}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+\newpage
+
+# Part A: Theoretical Analysis and Power Assessment
+
+## Background: The Sup Goldfeld-Quandt (Sup-GQ) Test
+
+The Goldfeld-Quandt (GQ) test is a classical method for detecting heteroscedasticity in regression models. The standard GQ test requires specifying a split point $\tau$ that divides the sample into two subsamples, then compares the variance of residuals between these subsamples.
+
+The F-statistic for the GQ test at split point $\tau$ is:
+
+$$F_{GQ}(\tau) = \frac{RSS_2 / df_2}{RSS_1 / df_1}$$
+
+where $RSS_1$ and $RSS_2$ are the residual sum of squares from the first and second subsamples, respectively.
+
+When the break point $\tau$ is unknown, we use the **Sup-GQ test**:
+
+$$T_{Sup-GQ} = \sup_{\tau \in (\tau_{min}, \tau_{max})} F_{GQ}(\tau)$$
+
+The asymptotic distribution of $T_{Sup-GQ}$ is non-standard because:
+
+1. We are taking the supremum over multiple correlated test statistics
+2. The distribution depends on the trimming parameters
+3. The number of split points tested affects the critical values
+
+Therefore, we must use **Wild Bootstrap** to obtain valid critical values.
+
+## Task A.1: Proposing a Combined P-Value Alternative
+
+### Proposal: Fisher's Combined P-Value Test (G Statistic)
+
+I propose using Fisher's method to combine the p-values from all split points into a single test statistic:
+
+$$G = -2 \sum_{m=1}^{M} \log(p_m)$$
+
+where $p_m$ is the p-value from the F-test at split point $\tau_m$, and $M$ is the number of split points tested.
+
+### Justification
+
+**Theoretical Motivation:**
+
+1. **Information Aggregation**: While Sup-GQ focuses only on the worst-case split point, Fisher's G statistic aggregates information from ALL split points. This is particularly advantageous when:
+   - Heteroscedasticity is distributed across multiple regions
+   - The variance change is gradual rather than abrupt
+   - There are multiple break points
+
+2. **Power Against Distributed Alternatives**: The Sup-GQ test is optimal for detecting a single, sharp break in variance. However, in practice, variance changes may be:
+   - Gradual (smoothly increasing variance)
+   - Multi-modal (multiple small breaks)
+   - Subtle but persistent across many observations
+
+   The G statistic accumulates evidence from all split points, making it more sensitive to these patterns.
+
+3. **Statistical Foundation**: Under the null hypothesis of homoscedasticity, if the p-values were independent and uniformly distributed, $G$ would follow a $\chi^2_{2M}$ distribution. This property provides intuition for the test's behavior.
+
+### Critical Value Determination
+
+The asymptotic distribution of $G$ is **non-standard** because:
+
+1. **Dependence Structure**: The p-values $p_1, p_2, \ldots, p_M$ are not independent because:
+   - Adjacent split points share most observations
+   - The same data is used repeatedly with different partitions
+   - The F-statistics are positively correlated
+
+2. **Non-uniform Distribution**: Under the null hypothesis with estimated parameters, the p-values are not exactly uniform, leading to distortions in the reference distribution.
+
+3. **Unknown Exact Distribution**: The correlation structure depends on:
+   - Sample size $N$
+   - Number of split points $M$
+   - Trimming parameters
+
+**Conclusion**: Critical values for $G$ must be obtained via **Wild Bootstrap**, similar to the Sup-GQ test.
+
+## Task A.2: Monte Carlo Power Comparison
+
+### Experimental Design
+
+**Model Specification:**
+$$y_t = 1 + x_t + \varepsilon_t, \quad x_t \sim N(0,1)$$
+
+**Error Structure (Heteroscedasticity):**
+$$\varepsilon_t \sim N(0, \sigma_t^2), \quad \sigma_t^2 = 1 + \delta \cdot \mathbf{1}(t/N > 0.5)$$
+
+**Parameters:**
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| $N$ | 100 | Sample size |
+| $R$ | 1000 | Monte Carlo replications |
+| $B$ | 499 | Bootstrap replications |
+| Trimming | 15% | Both ends |
+| $\alpha$ | 0.05 | Significance level |
+| $\delta$ | 0, 1, 3 | Heteroscedasticity level |
+
+### Wild Bootstrap Procedure
+
+The Wild Bootstrap preserves the heteroscedasticity structure under the null hypothesis:
+
+1. Fit the null model: $\hat{y}_t = \hat{\beta}_0 + \hat{\beta}_1 x_t$
+2. Obtain residuals: $\hat{e}_t = y_t - \hat{y}_t$
+3. Generate Rademacher weights: $v_t \sim \{-1, +1\}$ with equal probability
+4. Create bootstrap sample: $y_t^* = \hat{y}_t + \hat{e}_t \cdot v_t$
+5. Compute test statistics on bootstrap sample
+6. Repeat $B$ times to obtain bootstrap distribution
+
+**Bootstrap P-value:**
+$$\text{p-value} = \frac{1}{B} \sum_{b=1}^{B} \mathbf{1}(T^{*b} \geq T_{obs})$$
+
+### Tests Compared
+
+1. **Sup-GQ Test**: $T_{Sup-GQ} = \max_\tau F_{GQ}(\tau)$
+2. **Fisher's G Test**: $G = -2\sum_m \log(p_m)$
+3. **Breusch-Pagan Test**: Tests if $\text{Var}(\varepsilon) = f(X)$
+4. **White Test**: More general test including squared terms
+
+### Results
+
+```{r run-simulation, echo=FALSE, eval=FALSE}
+# Run the simulation (this takes time)
+source("Part_A_Monte_Carlo.R")
+```
+
+**Table 1: Empirical Size and Power at 5% Significance Level**
+
+| $\delta$ | Sup-GQ | G (Fisher) | Breusch-Pagan | White |
+|----------|--------|------------|---------------|-------|
+| 0 (Size) | ~0.05  | ~0.05      | ~0.05         | ~0.05 |
+| 1        | ~0.25  | ~0.30      | ~0.15         | ~0.12 |
+| 3        | ~0.75  | ~0.85      | ~0.45         | ~0.35 |
+
+*Note: Actual values will be computed when running the simulation.*
+
+### Discussion
+
+**Size Properties ($\delta = 0$):**
+- All tests should have empirical size close to the nominal 5%
+- Wild Bootstrap ensures proper size control for Sup-GQ and G
+- Breusch-Pagan and White use asymptotic distributions
+
+**Power Comparison:**
+
+1. **G vs Sup-GQ**: The G statistic is expected to have higher power because:
+   - It aggregates evidence from all split points
+   - It is more sensitive to the cumulative effect of variance changes
+   - The break at $\tau = 0.5$ affects many adjacent split points
+
+2. **Bootstrap vs Asymptotic Tests**: Sup-GQ and G (with bootstrap) typically outperform BP and White because:
+   - The break is structural (not dependent on $X$)
+   - BP and White are designed for variance that depends on regressors
+   - The unknown break point scenario favors adaptive methods
+
+3. **Effect of $\delta$**: Higher $\delta$ leads to:
+   - Larger variance ratio between subsamples
+   - More pronounced heteroscedasticity
+   - Higher power for all tests
+
+\newpage
+
+# Part B: Empirical Application - Quantile Transfer Entropy (QTE)
+
+## Background
+
+Quantile Transfer Entropy (QTE) extends traditional transfer entropy concepts to specific quantiles of the conditional distribution. This allows us to examine whether economic uncertainty provides predictive information for financial returns at different parts of the return distribution.
+
+## The QTE Framework
+
+### Model Specification
+
+**Restricted Model** (Null: No causality from $X$ to $Y$):
+$$Q_\tau(y_t | y_{t-k}) = \alpha_0 + \alpha_1 y_{t-k}$$
+
+**Unrestricted Model** (Alternative: Causality exists):
+$$Q_\tau(y_t | y_{t-k}, x_{t-k}) = \beta_0 + \beta_1 y_{t-k} + \beta_2 x_{t-k}$$
+
+### QTE Calculation
+
+The check function for quantile $\tau$:
+$$\rho_\tau(u) = u \cdot (\tau - \mathbf{1}(u < 0))$$
+
+The QTE statistic:
+$$\text{QTE}_{\tau,k} = \log\left(\sum_t \rho_\tau(\hat{u}_{1,t})\right) - \log\left(\sum_t \rho_\tau(\hat{u}_{2,t})\right)$$
+
+where $\hat{u}_{1,t}$ and $\hat{u}_{2,t}$ are residuals from restricted and unrestricted models.
+
+**Interpretation:**
+- $\text{QTE} \approx 0$: Past uncertainty provides no additional predictive information
+- $\text{QTE} > 0$: Past uncertainty improves quantile prediction (information transfer exists)
+
+## Hypothesis Testing
+
+$$H_0: \text{QTE}_{\tau,k} = 0 \quad \text{vs} \quad H_a: \text{QTE}_{\tau,k} > 0$$
+
+### Stationary Block Bootstrap
+
+The distribution of QTE under $H_0$ is non-standard, requiring bootstrap inference.
+
+**Why Stationary Block Bootstrap?**
+1. Time series data exhibits temporal dependence
+2. Standard bootstrap destroys autocorrelation structure
+3. Block bootstrap preserves local dependence
+4. Stationary version handles varying block lengths
+
+**Block Length Selection:**
+$$l = \lceil n^{1/3} \rceil$$
+
+This is the standard rule of thumb balancing:
+- Preserving dependence (larger blocks)
+- Having enough blocks for valid inference (smaller blocks)
+
+**Imposing the Null Hypothesis:**
+
+To test $H_0: X$ does not cause $Y$, we must break any dependence between $X$ and $Y$:
+
+1. Generate TWO independent stationary bootstrap index samples
+2. Apply one to $X$ and one to $Y$
+3. This creates samples where $X$ and $Y$ are independent (null imposed)
+
+**Centered Bootstrap Statistic:**
+$$\hat{Z}^{*b} = \widehat{\text{QTE}}^{*b}(\tau, k) - \widehat{\text{QTE}}(\tau, k)$$
+
+**P-value:**
+$$\text{p-value}(\tau, k) = \frac{1}{B}\sum_{b=1}^{B} \mathbf{1}\left(\hat{Z}^{*b} \geq \widehat{\text{QTE}}(\tau, k)\right)$$
+
+## Data
+
+**Economic Uncertainty Index:**
+- Source: Economic Policy Uncertainty Index (EPU)
+- Website: https://www.policyuncertainty.com/
+- Transformation: Log-differenced for stationarity
+
+**Financial Market Index:**
+- Source: S&P 500 Index
+- Transformation: Log returns (monthly)
+
+## Results
+
+```{r qte-results, echo=FALSE, eval=FALSE}
+source("Part_B_QTE.R")
+```
+
+**Table 2: QTE Estimates**
+
+| Lag (k) | $\tau = 0.10$ | $\tau = 0.50$ | $\tau = 0.90$ |
+|---------|---------------|---------------|---------------|
+| 1       | QTE (p-val)   | QTE (p-val)   | QTE (p-val)   |
+| 2       | QTE (p-val)   | QTE (p-val)   | QTE (p-val)   |
+| 3       | QTE (p-val)   | QTE (p-val)   | QTE (p-val)   |
+| 5       | QTE (p-val)   | QTE (p-val)   | QTE (p-val)   |
+
+*Note: Actual values will be computed from real data analysis.*
+
+## Discussion
+
+### Interpretation of Results
+
+**Lower Quantile ($\tau = 0.10$):**
+- Represents extreme losses (left tail)
+- Significant QTE indicates uncertainty helps predict large negative returns
+- Important for risk management and VaR estimation
+
+**Median ($\tau = 0.50$):**
+- Represents typical/average returns
+- Significant QTE suggests uncertainty affects central tendency of returns
+- Relevant for general portfolio allocation
+
+**Upper Quantile ($\tau = 0.90$):**
+- Represents extreme gains (right tail)
+- Significant QTE indicates uncertainty helps predict large positive returns
+- May indicate volatility-driven opportunities
+
+### Economic Implications
+
+1. **Asymmetric Effects**: If QTE is significant at extreme quantiles but not at median:
+   - Uncertainty affects tail risks more than average returns
+   - Non-linear relationship between uncertainty and returns
+
+2. **Information Flow Direction**: The QTE framework tests causality from uncertainty to returns
+   - Positive QTE suggests predictive power
+   - Useful for forecasting and hedging strategies
+
+3. **Lag Structure**: The lag $k$ with strongest effect indicates:
+   - Speed of information transmission
+   - Time horizon for uncertainty impact
+
+\newpage
+
+# Appendix: R Code
+
+## Part A: Monte Carlo Simulation
+
+```{r code-part-a, eval=FALSE, code=readLines("Part_A_Monte_Carlo.R")}
+```
+
+## Part B: QTE Analysis
+
+```{r code-part-b, eval=FALSE, code=readLines("Part_B_QTE.R")}
+```
+
+## Data Download Script
+
+```{r code-data, eval=FALSE, code=readLines("Part_B_Data_Download.R")}
+```
+
+\newpage
+
+# References
+
+1. Goldfeld, S. M., & Quandt, R. E. (1965). Some tests for homoscedasticity. *Journal of the American Statistical Association*, 60(310), 539-547.
+
+2. Fisher, R. A. (1932). *Statistical Methods for Research Workers*. Oliver and Boyd.
+
+3. White, H. (1980). A heteroskedasticity-consistent covariance matrix estimator and a direct test for heteroskedasticity. *Econometrica*, 48(4), 817-838.
+
+4. Breusch, T. S., & Pagan, A. R. (1979). A simple test for heteroscedasticity and random coefficient variation. *Econometrica*, 47(5), 1287-1294.
+
+5. Koenker, R., & Bassett Jr, G. (1978). Regression quantiles. *Econometrica*, 46(1), 33-50.
+
+6. Politis, D. N., & Romano, J. P. (1994). The stationary bootstrap. *Journal of the American Statistical Association*, 89(428), 1303-1313.
+
+7. Baker, S. R., Bloom, N., & Davis, S. J. (2016). Measuring economic policy uncertainty. *The Quarterly Journal of Economics*, 131(4), 1593-1636.
