@@ -6,7 +6,7 @@
 # ╚═══════════════════════════════════════════════════════════════════════════════╝
 #
 # This file contains:
-#   Part A: Monte Carlo Power Comparison (Sup-GQ vs Fisher's G vs BP vs White)
+#   Part A: Monte Carlo Power Comparison (Sup-GQ vs Fisher's G)
 #   Part B: Quantile Transfer Entropy (QTE) Analysis
 #
 # Author: [Your Name]
@@ -22,17 +22,10 @@
 RUN_PART_A <- TRUE
 RUN_PART_B <- TRUE
 
-# Chế độ test nhanh (TRUE = nhanh ~5 phút, FALSE = đầy đủ ~1 giờ)
-QUICK_TEST <- TRUE
-
-# Simulation parameters
-if (QUICK_TEST) {
-  R_SIMS <- 50      # Monte Carlo replications (quick)
-  B_BOOT <- 99      # Bootstrap replications (quick)
-} else {
-  R_SIMS <- 1000    # Monte Carlo replications (full)
-  B_BOOT <- 499     # Bootstrap replications (full)
-}
+# Simulation parameters (theo yêu cầu đề bài)
+# Thời gian chạy ước tính: 5-10 giờ
+R_SIMS <- 1000    # Monte Carlo replications
+B_BOOT <- 499     # Bootstrap replications
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║  [1] SETUP & PACKAGES                                                         ║
@@ -46,7 +39,7 @@ cat("╚════════════════════════
 cat("\n")
 
 # Clear environment (giữ lại config)
-config_vars <- c("RUN_PART_A", "RUN_PART_B", "QUICK_TEST", "R_SIMS", "B_BOOT")
+config_vars <- c("RUN_PART_A", "RUN_PART_B", "R_SIMS", "B_BOOT")
 rm(list = setdiff(ls(), config_vars))
 
 # Set seed for reproducibility
@@ -55,7 +48,7 @@ set.seed(123)
 # Install and load packages
 cat(">>> [1] Loading packages...\n")
 
-packages <- c("lmtest", "quantreg", "tseries", "zoo", "xts", "dplyr", "quantmod")
+packages <- c("quantreg", "tseries", "zoo", "xts", "dplyr", "quantmod")
 
 for (pkg in packages) {
   if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
@@ -70,7 +63,6 @@ cat("    All packages loaded successfully!\n\n")
 cat(">>> Configuration:\n")
 cat(sprintf("    RUN_PART_A: %s\n", RUN_PART_A))
 cat(sprintf("    RUN_PART_B: %s\n", RUN_PART_B))
-cat(sprintf("    QUICK_TEST: %s\n", QUICK_TEST))
 cat(sprintf("    R (Monte Carlo reps): %d\n", R_SIMS))
 cat(sprintf("    B (Bootstrap reps): %d\n", B_BOOT))
 cat("\n")
@@ -164,26 +156,6 @@ if (RUN_PART_A) {
     return(list(sup = sup_gq, g = g_stat))
   }
 
-  # Function: Breusch-Pagan Test
-  breusch_pagan_test <- function(y, x) {
-    model <- lm(y ~ x)
-    bp_test <- bptest(model)
-    return(bp_test$p.value)
-  }
-
-  # Function: White Test
-  white_test <- function(y, x) {
-    model <- lm(y ~ x)
-    resid_sq <- resid(model)^2
-    x_sq <- x^2
-    aux_model <- lm(resid_sq ~ x + x_sq)
-    n <- length(y)
-    r_squared <- summary(aux_model)$r.squared
-    white_stat <- n * r_squared
-    p_value <- pchisq(white_stat, df = 2, lower.tail = FALSE)
-    return(p_value)
-  }
-
   # Function: Wild Bootstrap
   # Uses Rademacher distribution: v ~ {-1, +1} with equal probability
   wild_bootstrap <- function(y_obs, x_obs, B, stats_obs) {
@@ -220,9 +192,7 @@ if (RUN_PART_A) {
   results_A <- data.frame(
     Delta = numeric(),
     Power_SupGQ = numeric(),
-    Power_G = numeric(),
-    Power_BP = numeric(),
-    Power_White = numeric()
+    Power_G = numeric()
   )
 
   for (delta in Delta) {
@@ -230,8 +200,6 @@ if (RUN_PART_A) {
 
     reject_sup <- 0
     reject_g <- 0
-    reject_bp <- 0
-    reject_white <- 0
 
     for (r in 1:R) {
       # Generate data
@@ -245,15 +213,9 @@ if (RUN_PART_A) {
       # Wild Bootstrap for Sup-GQ and G
       boot_results <- wild_bootstrap(y_obs, x_obs, B, stats_obs)
 
-      # Breusch-Pagan and White tests
-      pval_bp <- breusch_pagan_test(y_obs, x_obs)
-      pval_white <- white_test(y_obs, x_obs)
-
       # Count rejections
       if (boot_results$pval_sup < alpha) reject_sup <- reject_sup + 1
       if (boot_results$pval_g < alpha) reject_g <- reject_g + 1
-      if (pval_bp < alpha) reject_bp <- reject_bp + 1
-      if (pval_white < alpha) reject_white <- reject_white + 1
 
       # Progress indicator
       if (r %% max(1, floor(R/10)) == 0) cat(".")
@@ -263,13 +225,10 @@ if (RUN_PART_A) {
     results_A <- rbind(results_A, data.frame(
       Delta = delta,
       Power_SupGQ = reject_sup / R,
-      Power_G = reject_g / R,
-      Power_BP = reject_bp / R,
-      Power_White = reject_white / R
+      Power_G = reject_g / R
     ))
 
-    cat(sprintf(" Done (Sup=%.3f, G=%.3f, BP=%.3f, W=%.3f)\n",
-                reject_sup/R, reject_g/R, reject_bp/R, reject_white/R))
+    cat(sprintf(" Done (Sup=%.3f, G=%.3f)\n", reject_sup/R, reject_g/R))
   }
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -281,22 +240,17 @@ if (RUN_PART_A) {
   cat("                    PART A RESULTS                                         \n")
   cat("═══════════════════════════════════════════════════════════════════════════\n")
   cat("\n")
-  cat("Table 1: Empirical Size (δ=0) and Power (δ=1,3) at 5% Significance Level\n")
-  cat("─────────────────────────────────────────────────────────────────────────\n")
-  cat(sprintf("%-10s | %-10s | %-10s | %-14s | %-10s\n",
-              "Delta", "Sup-GQ", "G (Fisher)", "Breusch-Pagan", "White"))
-  cat("─────────────────────────────────────────────────────────────────────────\n")
+  cat("───────────────────────────────────────────\n")
+  cat(sprintf("%8s %15s %12s\n", "Delta", "Power (SupGQ)", "Power (G)"))
+  cat("───────────────────────────────────────────\n")
 
   for (i in 1:nrow(results_A)) {
-    label <- ifelse(results_A$Delta[i] == 0, "0 (Size)", as.character(results_A$Delta[i]))
-    cat(sprintf("%-10s | %-10.3f | %-10.3f | %-14.3f | %-10.3f\n",
-                label,
+    cat(sprintf("%8d %15.3f %12.3f\n",
+                results_A$Delta[i],
                 results_A$Power_SupGQ[i],
-                results_A$Power_G[i],
-                results_A$Power_BP[i],
-                results_A$Power_White[i]))
+                results_A$Power_G[i]))
   }
-  cat("─────────────────────────────────────────────────────────────────────────\n")
+  cat("───────────────────────────────────────────\n")
 
   cat("\nInterpretation:\n")
   cat("• Delta = 0: Size check (should be ≈ 0.05 = nominal level)\n")
@@ -578,11 +532,6 @@ if (RUN_PART_B) {
   cat("\n")
 }
 
-cat("═══════════════════════════════════════════════════════════════════════════\n")
-if (QUICK_TEST) {
-  cat("NOTE: This was a QUICK TEST. For submission, set QUICK_TEST <- FALSE\n")
-  cat("      to run full simulation (R=1000, B=499).\n")
-}
 cat("═══════════════════════════════════════════════════════════════════════════\n")
 
 # ═══════════════════════════════════════════════════════════════════════════════
