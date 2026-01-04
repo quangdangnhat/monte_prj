@@ -23,8 +23,10 @@ RUN_PART_A <- TRUE
 RUN_PART_B <- TRUE
 
 # Simulation parameters
-R_SIMS <- 1000    # Monte Carlo replications
-B_BOOT <- 499     # Bootstrap replications
+# Lưu ý: R=1000, B=499 chạy rất lâu (~5-10 giờ)
+# Khuyến nghị: R=200, B=199 (~30-60 phút) cho kết quả đủ tốt
+R_SIMS <- 200     # Monte Carlo replications
+B_BOOT <- 199     # Bootstrap replications
 
 # ╔═══════════════════════════════════════════════════════════════════════════════╗
 # ║  [1] SETUP & PACKAGES                                                         ║
