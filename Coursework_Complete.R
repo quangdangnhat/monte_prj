@@ -240,15 +240,13 @@ if (RUN_PART_A) {
   cat("                    PART A RESULTS                                         \n")
   cat("═══════════════════════════════════════════════════════════════════════════\n")
   cat("\n")
-  cat("Table 1: Empirical Size (δ=0) and Power (δ=1,3) at 5% Significance Level\n")
   cat("───────────────────────────────────────────\n")
-  cat(sprintf("%-10s | %-10s | %-10s\n", "Delta", "Sup-GQ", "G (Fisher)"))
+  cat(sprintf("%8s %15s %12s\n", "Delta", "Power (SupGQ)", "Power (G)"))
   cat("───────────────────────────────────────────\n")
 
   for (i in 1:nrow(results_A)) {
-    label <- ifelse(results_A$Delta[i] == 0, "0 (Size)", as.character(results_A$Delta[i]))
-    cat(sprintf("%-10s | %-10.3f | %-10.3f\n",
-                label,
+    cat(sprintf("%8d %15.3f %12.3f\n",
+                results_A$Delta[i],
                 results_A$Power_SupGQ[i],
                 results_A$Power_G[i]))
   }
