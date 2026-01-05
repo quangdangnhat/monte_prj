@@ -48,7 +48,7 @@ set.seed(123)
 # Install and load packages
 cat(">>> [1] Loading packages...\n")
 
-packages <- c("quantreg", "tseries", "zoo", "xts", "dplyr", "quantmod")
+packages <- c("quantreg", "tseries", "zoo", "xts", "dplyr", "quantmod", "parallel")
 
 for (pkg in packages) {
   if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
@@ -184,10 +184,35 @@ if (RUN_PART_A) {
   cat("    Functions defined.\n\n")
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # [A.3] MONTE CARLO SIMULATION
+  # [A.3] MONTE CARLO SIMULATION (PARALLEL)
   # ─────────────────────────────────────────────────────────────────────────────
 
-  cat(">>> [A.3] Running Monte Carlo simulation...\n")
+  cat(">>> [A.3] Running Monte Carlo simulation (PARALLEL)...\n")
+
+  # Detect number of cores
+  n_cores <- detectCores() - 1  # Leave 1 core free
+  if (n_cores < 1) n_cores <- 1
+  cat(sprintf("    Using %d CPU cores for parallel processing\n", n_cores))
+
+  # Function for single Monte Carlo replication
+  single_mc_rep <- function(r, N, delta, B, alpha) {
+    # Generate data
+    data <- generate_data(N, delta)
+    y_obs <- data$y
+    x_obs <- data$x
+
+    # Calculate observed statistics
+    stats_obs <- calc_statistics(y_obs, x_obs, trim = 0.15)
+
+    # Wild Bootstrap for Sup-GQ and G
+    boot_results <- wild_bootstrap(y_obs, x_obs, B, stats_obs)
+
+    # Return rejection indicators
+    return(c(
+      reject_sup = as.integer(boot_results$pval_sup < alpha),
+      reject_g = as.integer(boot_results$pval_g < alpha)
+    ))
+  }
 
   results_A <- data.frame(
     Delta = numeric(),
@@ -197,29 +222,29 @@ if (RUN_PART_A) {
 
   for (delta in Delta) {
     cat(sprintf("\n    Delta = %d: ", delta))
+    start_time <- Sys.time()
 
-    reject_sup <- 0
-    reject_g <- 0
+    # Create cluster for parallel processing
+    cl <- makeCluster(n_cores)
 
-    for (r in 1:R) {
-      # Generate data
-      data <- generate_data(N, delta)
-      y_obs <- data$y
-      x_obs <- data$x
+    # Export functions and variables to cluster
+    clusterExport(cl, c("generate_data", "calc_statistics", "wild_bootstrap",
+                        "N", "delta", "B", "alpha"), envir = environment())
 
-      # Calculate observed statistics
-      stats_obs <- calc_statistics(y_obs, x_obs, trim = 0.15)
+    # Set seed for reproducibility on each worker
+    clusterSetRNGStream(cl, 123 + which(Delta == delta))
 
-      # Wild Bootstrap for Sup-GQ and G
-      boot_results <- wild_bootstrap(y_obs, x_obs, B, stats_obs)
+    # Run parallel Monte Carlo
+    mc_results <- parLapply(cl, 1:R, function(r) {
+      single_mc_rep(r, N, delta, B, alpha)
+    })
 
-      # Count rejections
-      if (boot_results$pval_sup < alpha) reject_sup <- reject_sup + 1
-      if (boot_results$pval_g < alpha) reject_g <- reject_g + 1
+    # Stop cluster
+    stopCluster(cl)
 
-      # Progress indicator
-      if (r %% max(1, floor(R/10)) == 0) cat(".")
-    }
+    # Aggregate results
+    reject_sup <- sum(sapply(mc_results, function(x) x["reject_sup"]))
+    reject_g <- sum(sapply(mc_results, function(x) x["reject_g"]))
 
     # Calculate power
     results_A <- rbind(results_A, data.frame(
@@ -228,7 +253,9 @@ if (RUN_PART_A) {
       Power_G = reject_g / R
     ))
 
-    cat(sprintf(" Done (Sup=%.3f, G=%.3f)\n", reject_sup/R, reject_g/R))
+    elapsed <- round(difftime(Sys.time(), start_time, units = "mins"), 1)
+    cat(sprintf(" Done in %.1f mins (Sup=%.3f, G=%.3f)\n",
+                elapsed, reject_sup/R, reject_g/R))
   }
 
   # ─────────────────────────────────────────────────────────────────────────────
