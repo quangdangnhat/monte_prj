@@ -21,8 +21,17 @@
 
 | Part | Nội dung | Mục đích |
 |------|----------|----------|
-| **Part A** | Monte Carlo Simulation | So sánh power của 2 test phát hiện heteroscedasticity: **Sup-GQ** và **Fisher's G** |
+| **Part A** | Monte Carlo Simulation | So sánh power của **4 tests** phát hiện heteroscedasticity |
 | **Part B** | QTE Analysis | Kiểm tra quan hệ nhân quả giữa 2 chuỗi thời gian qua các quantile |
+
+### 4 Tests được so sánh trong Part A:
+
+| Test | Loại | Ý tưởng chính |
+|------|------|---------------|
+| **Sup-GQ** | Bootstrap | Max F-statistic qua tất cả breakpoints |
+| **Fisher's G** | Bootstrap | Kết hợp p-values từ tất cả breakpoints |
+| **Breusch-Pagan** | Asymptotic | Variance phụ thuộc vào X? |
+| **White** | Asymptotic | Variance phụ thuộc vào X và X²? |
 
 ### Heteroscedasticity là gì?
 
@@ -73,12 +82,14 @@ B_BOOT <- 499         # Số lần Bootstrap
 
 ### 3.1 Mục tiêu
 
-So sánh **Power** (khả năng phát hiện) của 2 tests:
+So sánh **Power** (khả năng phát hiện) của 4 tests:
 
-| Test | Tên đầy đủ | Ý tưởng |
-|------|------------|---------|
-| **Sup-GQ** | Supremum Goldfeld-Quandt | Tìm F-statistic LỚN NHẤT qua tất cả breakpoints |
-| **Fisher's G** | Fisher's Combined Test | Kết hợp p-values từ tất cả breakpoints |
+| Test | Tên đầy đủ | Package | Ý tưởng |
+|------|------------|---------|---------|
+| **Sup-GQ** | Supremum Goldfeld-Quandt | - | Tìm F-statistic LỚN NHẤT qua tất cả breakpoints |
+| **Fisher's G** | Fisher's Combined Test | - | Kết hợp p-values: G = -2Σlog(p) |
+| **Breusch-Pagan** | Breusch-Pagan Test | lmtest | Regress ε² ~ X |
+| **White** | White Test | - | Regress ε² ~ X + X² |
 
 ### 3.2 Data Generating Process (DGP)
 
@@ -108,10 +119,10 @@ Variance:          σ² = 1     |    σ² = 1 + delta
 
 Delta = 0: σ² = 1 toàn bộ     → Homoscedastic (H₀ đúng)
 Delta = 1: σ² = 1 | σ² = 2    → Variance gấp đôi ở nửa sau
-Delta = 2: σ² = 1 | σ² = 3    → Variance gấp ba ở nửa sau
+Delta = 3: σ² = 1 | σ² = 4    → Variance gấp bốn ở nửa sau
 ```
 
-### 3.3 Hàm calc_statistics() - Tính Sup-GQ và Fisher's G
+### 3.3 Test 1 & 2: Sup-GQ và Fisher's G
 
 ```r
 # Dòng 123-170
@@ -158,14 +169,60 @@ fit1 <- .lm.fit(X1, y1)  # Nhanh hơn và ổn định số học
 - Nhanh hơn `lm()` vì không parse formula
 - Ổn định số học hơn `solve(t(X) %*% X) %*% t(X) %*% y`
 
-### 3.4 Parametric Bootstrap
+### 3.4 Test 3: Breusch-Pagan Test
+
+```r
+# Dòng 172-178
+breusch_pagan_test <- function(y, x) {
+  model <- lm(y ~ x)
+  bp_result <- bptest(model)  # từ package lmtest
+  return(bp_result$p.value)
+}
+```
+
+**Nguyên lý:**
+1. Fit model: y = β₀ + β₁x + ε
+2. Lấy residuals: ε̂
+3. Test: Var(ε) có phụ thuộc vào X không?
+4. Dùng LM (Lagrange Multiplier) test
+
+**Ưu điểm:** Nhanh, dùng asymptotic distribution (không cần bootstrap)
+**Nhược điểm:** Chỉ test linear dependence của variance
+
+### 3.5 Test 4: White Test
+
+```r
+# Dòng 180-192
+white_test <- function(y, x) {
+  n <- length(y)
+  model <- lm(y ~ x)
+  resid_sq <- resid(model)^2      # ε̂²
+  x_sq <- x^2
+  aux_model <- lm(resid_sq ~ x + x_sq)  # Hồi quy phụ
+  r_squared <- summary(aux_model)$r.squared
+  white_stat <- n * r_squared     # nR² ~ χ²(2)
+  p_value <- pchisq(white_stat, df = 2, lower.tail = FALSE)
+  return(p_value)
+}
+```
+
+**Nguyên lý:**
+1. Fit model: y = β₀ + β₁x + ε
+2. Lấy ε̂² (squared residuals)
+3. Regress: ε̂² ~ x + x² (auxiliary regression)
+4. Test statistic: nR² ~ χ²(2) under H₀
+
+**Ưu điểm:** Phát hiện cả non-linear heteroscedasticity
+**Nhược điểm:** Có thể kém power với small samples
+
+### 3.6 Parametric Bootstrap cho Sup-GQ và G
 
 **Vấn đề:** Sup-GQ và G không có phân phối lý thuyết chuẩn → không có critical value sẵn
 
 **Giải pháp:** Dùng Bootstrap để xấp xỉ phân phối dưới H₀
 
 ```r
-# Dòng 172-199
+# Dòng 194-220
 wild_bootstrap <- function(y_obs, x_obs, B, stats_obs) {
   # Fit model
   null_model <- lm(y_obs ~ x_obs)
@@ -200,12 +257,13 @@ H₀: Homoscedasticity (variance đồng nhất)
 → KHÔNG dùng wild bootstrap (e_hat * v) vì nó giữ nguyên pattern heteroscedasticity!
 ```
 
-### 3.5 Monte Carlo Simulation với Parallel Processing
+### 3.7 Monte Carlo Simulation với Parallel Processing
 
 ```r
-# Dòng 203-276
+# Dòng 229-290
 n_cores <- detectCores() - 2  # Để lại 2 cores cho hệ thống
 cl <- makeCluster(n_cores)
+clusterEvalQ(cl, library(lmtest))  # Load lmtest trên mỗi worker
 parLapply(cl, 1:R, function(r) { ... })  # Chạy song song
 stopCluster(cl)
 ```
@@ -213,12 +271,13 @@ stopCluster(cl)
 **Quy trình Monte Carlo:**
 
 ```
-Với mỗi delta ∈ {0, 1, 2}:
+Với mỗi delta ∈ {0, 1, 3}:
     Lặp R = 1000 lần (song song trên nhiều cores):
         1. Generate data với delta
         2. Tính Sup-GQ và G observed
-        3. Bootstrap 499 lần → p-values
-        4. Reject nếu p-value < 0.05
+        3. Bootstrap 499 lần → p-values cho Sup-GQ, G
+        4. Tính p-values cho BP và White (asymptotic)
+        5. Reject nếu p-value < 0.05
 
     Power = (Số lần reject) / 1000
 ```
@@ -385,16 +444,17 @@ Rscript Coursework_Complete.R
 
 ## 6. Đọc Hiểu Kết Quả
 
-### Part A - Bảng Power:
+### Part A - Bảng Power (4 tests):
 
 ```
-───────────────────────────────────────────
-   Delta    Power (SupGQ)    Power (G)
-───────────────────────────────────────────
-       0           0.052        0.048     ← SIZE CHECK
-       1           0.450        0.380     ← POWER (mild het.)
-       2           0.820        0.750     ← POWER (strong het.)
-───────────────────────────────────────────
+Table 1: Empirical Size (δ=0) and Power (δ=1,3) at 5% Significance Level
+─────────────────────────────────────────────────────────────────────────────
+   Delta       Sup-GQ   Fisher's G Breusch-Pagan        White
+─────────────────────────────────────────────────────────────────────────────
+       0        0.052        0.048        0.051        0.049   ← SIZE CHECK
+       1        0.450        0.380        0.250        0.220   ← POWER (mild)
+       3        0.850        0.920        0.650        0.580   ← POWER (strong)
+─────────────────────────────────────────────────────────────────────────────
 ```
 
 **Cách đọc:**
@@ -402,12 +462,14 @@ Rscript Coursework_Complete.R
 | Delta | Ý nghĩa | Kỳ vọng |
 |-------|---------|---------|
 | 0 | Size check (H₀ đúng) | ≈ 0.05 (nominal level) |
-| 1 | Heteroscedasticity nhẹ | 0.3 - 0.6 |
-| 2 | Heteroscedasticity mạnh | 0.7 - 0.9 |
+| 1 | Heteroscedasticity nhẹ | 0.2 - 0.5 |
+| 3 | Heteroscedasticity mạnh | 0.6 - 0.95 |
 
 **Interpretation:**
-- Delta = 0 phải ≈ 0.05. Nếu > 0.10 → test bị **over-sized** (reject quá nhiều)
-- So sánh Sup-GQ vs G: Test nào có power cao hơn → test đó tốt hơn
+- **Delta = 0** phải ≈ 0.05. Nếu > 0.10 → test bị **over-sized**
+- So sánh 4 tests: Test nào có power cao hơn ở delta = 1, 3 → test đó tốt hơn
+- **Sup-GQ và G** thường mạnh hơn vì chúng được thiết kế cho structural break
+- **BP và White** là general tests, có thể kém power với break cụ thể
 
 ### Part B - Bảng QTE:
 
@@ -441,6 +503,8 @@ Lag (k)  | tau = 0.10      | tau = 0.50      | tau = 0.90
 | **Power** | P(Reject H₀ \| H₁ đúng) - khả năng phát hiện |
 | **Sup-GQ** | max(F-statistics) qua tất cả breakpoints |
 | **Fisher's G** | -2Σlog(p-values) - combined test |
+| **Breusch-Pagan** | LM test cho Var(ε) ~ X |
+| **White** | nR² test cho Var(ε) ~ X + X² |
 | **Bootstrap** | Resampling để xấp xỉ phân phối |
 | **QTE** | log(Loss_R) - log(Loss_U) - đo causality |
 | **Quantile τ** | Điểm mà τ% observations nằm dưới |
@@ -452,6 +516,7 @@ Lag (k)  | tau = 0.10      | tau = 0.50      | tau = 0.90
 | Package | Mục đích |
 |---------|----------|
 | `parallel` | Parallel processing (nhiều cores) |
+| `lmtest` | Breusch-Pagan test - hàm `bptest()` |
 | `quantreg` | Quantile regression - hàm `rq()` |
 | `tseries` | Time series analysis |
 | `zoo`, `xts` | Time series objects |
@@ -466,12 +531,14 @@ Lag (k)  | tau = 0.10      | tau = 0.50      | tau = 0.90
 ┌─────────────────────────────────────────────────────────────────┐
 │                    COURSEWORK_COMPLETE.R                        │
 ├─────────────────────────────────────────────────────────────────┤
-│  PART A: Monte Carlo Power Comparison                           │
+│  PART A: Monte Carlo Power Comparison (4 Tests)                 │
 │  ├── generate_data(): Tạo data với heteroscedasticity           │
 │  ├── calc_statistics(): Tính Sup-GQ và Fisher's G               │
+│  ├── breusch_pagan_test(): BP test (lmtest package)             │
+│  ├── white_test(): White test (nR² statistic)                   │
 │  ├── wild_bootstrap(): Parametric bootstrap (impose H₀)         │
 │  ├── parLapply(): Parallel processing                           │
-│  └── Output: Power table cho Delta = 0, 1, 2                    │
+│  └── Output: Power table cho Delta = 0, 1, 3                    │
 ├─────────────────────────────────────────────────────────────────┤
 │  PART B: Quantile Transfer Entropy                              │
 │  ├── calculate_qte(): Tính QTE cho mỗi (tau, k)                 │
@@ -480,6 +547,18 @@ Lag (k)  | tau = 0.10      | tau = 0.50      | tau = 0.90
 │  └── Output: QTE estimates với p-values                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## So Sánh 4 Tests
+
+| Tiêu chí | Sup-GQ | Fisher's G | Breusch-Pagan | White |
+|----------|--------|------------|---------------|-------|
+| **Loại** | Bootstrap | Bootstrap | Asymptotic | Asymptotic |
+| **H₁ design** | Structural break | Structural break | General | General |
+| **Speed** | Chậm | Chậm | Nhanh | Nhanh |
+| **Power với break** | Cao | Cao | Trung bình | Trung bình |
+| **Power general het.** | Trung bình | Trung bình | Tốt | Tốt |
 
 ---
 
