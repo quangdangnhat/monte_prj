@@ -87,7 +87,7 @@ if (RUN_PART_A) {
   N <- 100              # Sample size
   R <- R_SIMS           # Monte Carlo replications
   B <- B_BOOT           # Bootstrap replications
-  Delta <- c(2)   # CHỈ CHẠY DELTA=2 (vì delta=0 và delta=1 đã có kết quả)
+  Delta <- c(0, 1, 2)   # Chạy lại tất cả với bootstrap đã sửa
   trim <- 0.15          # Trimming percentage (15% on both ends)
   alpha <- 0.05         # Significance level
 
@@ -169,20 +169,24 @@ if (RUN_PART_A) {
     return(list(sup = sup_gq, g = g_stat))
   }
 
-  # Function: Wild Bootstrap
-  # Uses Rademacher distribution: v ~ {-1, +1} with equal probability
+  # Function: Bootstrap under H0 (homoscedasticity)
+  # Parametric bootstrap: generate errors from N(0, sigma^2) to impose H0
   wild_bootstrap <- function(y_obs, x_obs, B, stats_obs) {
     n <- length(y_obs)
     null_model <- lm(y_obs ~ x_obs)
     y_hat <- fitted(null_model)
     e_hat <- resid(null_model)
 
+    # Estimate common variance under H0 (homoscedasticity)
+    sigma_hat <- sqrt(sum(e_hat^2) / (n - 2))
+
     boot_sup_vals <- numeric(B)
     boot_g_vals <- numeric(B)
 
     for (b in 1:B) {
-      v <- sample(c(-1, 1), n, replace = TRUE)
-      y_star <- y_hat + e_hat * v
+      # Generate homoscedastic errors under H0
+      e_star <- rnorm(n, 0, sigma_hat)
+      y_star <- y_hat + e_star
       stats_star <- calc_statistics(y_star, x_obs, trim = 0.15)
       boot_sup_vals[b] <- stats_star$sup
       boot_g_vals[b] <- stats_star$g
