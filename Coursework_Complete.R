@@ -207,7 +207,7 @@ if (RUN_PART_A) {
   cat(">>> [A.3] Running Monte Carlo simulation (PARALLEL)...\n")
 
   # Detect number of cores (giới hạn để tránh quá tải)
-  n_cores <- min(detectCores() - 2, 6)  # Dùng tối đa 6 cores, để lại 2 cores cho hệ thống
+  n_cores <- detectCores() - 2  # Dùng tất cả cores, chỉ để lại 2 cho hệ thống
   if (n_cores < 1) n_cores <- 1
   cat(sprintf("    Using %d CPU cores for parallel processing\n", n_cores))
 
