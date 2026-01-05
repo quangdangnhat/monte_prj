@@ -87,7 +87,7 @@ if (RUN_PART_A) {
   N <- 100              # Sample size
   R <- R_SIMS           # Monte Carlo replications
   B <- B_BOOT           # Bootstrap replications
-  Delta <- c(0, 1, 2)   # Heteroscedasticity levels (0 = size check)
+  Delta <- c(2)   # CHỈ CHẠY DELTA=2 (vì delta=0 và delta=1 đã có kết quả)
   trim <- 0.15          # Trimming percentage (15% on both ends)
   alpha <- 0.05         # Significance level
 
