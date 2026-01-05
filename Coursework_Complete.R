@@ -87,7 +87,7 @@ if (RUN_PART_A) {
   N <- 100              # Sample size
   R <- R_SIMS           # Monte Carlo replications
   B <- B_BOOT           # Bootstrap replications
-  Delta <- c(0, 1, 3)   # Heteroscedasticity levels (0 = size check)
+  Delta <- c(0, 1, 2)   # Heteroscedasticity levels (0 = size check)
   trim <- 0.15          # Trimming percentage (15% on both ends)
   alpha <- 0.05         # Significance level
 
@@ -116,9 +116,10 @@ if (RUN_PART_A) {
     return(data.frame(y = y, x = x))
   }
 
-  # Function: Calculate Sup-GQ and Fisher's G statistics
+  # Function: Calculate Sup-GQ and Fisher's G statistics (OPTIMIZED)
   # Sup-GQ: Maximum F-statistic across all split points
   # G (Fisher): -2 * sum(log(p_values))
+  # Using direct matrix algebra instead of lm() for speed
   calc_statistics <- function(y, x, trim = 0.15) {
     n <- length(y)
     tau_min <- floor(n * trim)
@@ -129,18 +130,30 @@ if (RUN_PART_A) {
     f_stats <- numeric(M)
     p_vals <- numeric(M)
 
+    # Pre-compute design matrix
+    X_full <- cbind(1, x)
+
     idx <- 1
     for (tau in tau_grid) {
-      y1 <- y[1:tau]
-      x1 <- x[1:tau]
-      y2 <- y[(tau + 1):n]
-      x2 <- x[(tau + 1):n]
+      # Split indices
+      idx1 <- 1:tau
+      idx2 <- (tau + 1):n
 
-      rss1 <- sum(resid(lm(y1 ~ x1))^2)
-      rss2 <- sum(resid(lm(y2 ~ x2))^2)
-      df1 <- length(y1) - 2
-      df2 <- length(y2) - 2
+      # First subsample - direct OLS
+      X1 <- X_full[idx1, , drop = FALSE]
+      y1 <- y[idx1]
+      beta1 <- solve(t(X1) %*% X1) %*% t(X1) %*% y1
+      rss1 <- sum((y1 - X1 %*% beta1)^2)
+      df1 <- tau - 2
 
+      # Second subsample - direct OLS
+      X2 <- X_full[idx2, , drop = FALSE]
+      y2 <- y[idx2]
+      beta2 <- solve(t(X2) %*% X2) %*% t(X2) %*% y2
+      rss2 <- sum((y2 - X2 %*% beta2)^2)
+      df2 <- n - tau - 2
+
+      # F-statistic
       F_GQ <- (rss2 / df2) / (rss1 / df1)
       p_val <- pf(F_GQ, df2, df1, lower.tail = FALSE)
 
@@ -282,7 +295,7 @@ if (RUN_PART_A) {
   cat("\nInterpretation:\n")
   cat("• Delta = 0: Size check (should be ≈ 0.05 = nominal level)\n")
   cat("• Delta = 1: Variance doubles after midpoint\n")
-  cat("• Delta = 3: Variance quadruples after midpoint\n")
+  cat("• Delta = 2: Variance triples after midpoint\n")
   cat("• Higher power = better at detecting heteroscedasticity\n")
   cat("\n")
 
