@@ -1,377 +1,415 @@
-# GIẢI THÍCH CHI TIẾT: Coursework_Complete.R
+# Giải Thích Chi Tiết: Coursework_Complete.R
 
-## Tổng Quan
+## Dành cho Newbie - Financial Econometrics 2025-2026
 
-File `Coursework_Complete.R` là bài tập môn **Financial Econometrics** năm học 2025-2026, bao gồm 2 phần chính:
+---
 
-| Phần | Nội dung | Mục đích |
+## Mục Lục
+
+1. [Tổng Quan](#1-tổng-quan)
+2. [Cấu Hình](#2-cấu-hình-configuration)
+3. [Part A: Monte Carlo Power Comparison](#3-part-a-monte-carlo-power-comparison)
+4. [Part B: Quantile Transfer Entropy](#4-part-b-quantile-transfer-entropy-qte)
+5. [Hướng Dẫn Chạy](#5-hướng-dẫn-chạy)
+6. [Đọc Hiểu Kết Quả](#6-đọc-hiểu-kết-quả)
+
+---
+
+## 1. Tổng Quan
+
+### File này làm gì?
+
+| Part | Nội dung | Mục đích |
 |------|----------|----------|
-| **Part A** | Monte Carlo Power Comparison | So sánh sức mạnh (power) của các bài kiểm tra heteroscedasticity |
-| **Part B** | Quantile Transfer Entropy (QTE) | Phân tích quan hệ nhân quả giữa các chuỗi thời gian |
+| **Part A** | Monte Carlo Simulation | So sánh power của 2 test phát hiện heteroscedasticity: **Sup-GQ** và **Fisher's G** |
+| **Part B** | QTE Analysis | Kiểm tra quan hệ nhân quả giữa 2 chuỗi thời gian qua các quantile |
+
+### Heteroscedasticity là gì?
+
+**Homoscedasticity** = Phương sai của error ĐỒNG NHẤT (cùng 1 giá trị)
+**Heteroscedasticity** = Phương sai của error THAY ĐỔI theo thời gian/biến
+
+```
+Homoscedasticity:                    Heteroscedasticity:
+    |   * * * * * * * * *                |                *   *
+    | * * * * * * * * * *                |           * *    *
+y   | * * * * * * * * * *            y   | * * *  *    *  *
+    |   * * * * * * * * *                |  * *  *  *      *
+    |________________________ x          |________________________ x
+    Variance đều khắp nơi               Variance tăng dần
+```
+
+**Tại sao cần phát hiện?**
+- OLS không còn efficient nếu có heteroscedasticity
+- Standard errors bị sai → các test thống kê không đáng tin
+- Cần điều chỉnh (robust SE, GLS, ...)
 
 ---
 
-## [0] CONFIGURATION (Dòng 17-35)
-
-### Các biến cấu hình:
+## 2. Cấu Hình (Configuration)
 
 ```r
-RUN_PART_A <- TRUE    # Chạy Part A? (TRUE/FALSE)
-RUN_PART_B <- TRUE    # Chạy Part B? (TRUE/FALSE)
-QUICK_TEST <- TRUE    # Chế độ test nhanh?
+# Dòng 21-28 trong file
+RUN_PART_A <- TRUE    # Có chạy Part A không?
+RUN_PART_B <- TRUE    # Có chạy Part B không?
+R_SIMS <- 1000        # Số lần Monte Carlo
+B_BOOT <- 499         # Số lần Bootstrap
 ```
 
-### Chế độ chạy:
+### Ý nghĩa các tham số:
 
-| Chế độ | R (MC reps) | B (Bootstrap) | Thời gian ước tính |
-|--------|-------------|---------------|-------------------|
-| `QUICK_TEST = TRUE` | 50 | 99 | ~5 phút |
-| `QUICK_TEST = FALSE` | 1000 | 499 | ~1 giờ |
+| Tham số | Giá trị | Ý nghĩa |
+|---------|---------|---------|
+| `R_SIMS` | 1000 | Lặp 1000 lần để ước lượng power chính xác |
+| `B_BOOT` | 499 | 499 bootstrap samples để tính p-value |
 
-**Giải thích:**
-- `R_SIMS`: Số lần lặp Monte Carlo (càng lớn → kết quả càng ổn định)
-- `B_BOOT`: Số lần bootstrap (càng lớn → p-value càng chính xác)
-
----
-
-## [1] SETUP & PACKAGES (Dòng 37-76)
-
-### Packages được sử dụng:
-
-| Package | Mục đích |
-|---------|----------|
-| `lmtest` | Breusch-Pagan test cho heteroscedasticity |
-| `quantreg` | Quantile regression (hồi quy phân vị) |
-| `tseries` | Phân tích chuỗi thời gian |
-| `zoo`, `xts` | Xử lý dữ liệu chuỗi thời gian |
-| `dplyr` | Thao tác dữ liệu |
-| `quantmod` | Tải dữ liệu tài chính |
+### Thời gian chạy ước tính:
+- **Part A:** 3-6 giờ (phụ thuộc số CPU cores)
+- **Part B:** ~30 phút
 
 ---
 
-# PART A: MONTE CARLO POWER COMPARISON
+## 3. Part A: Monte Carlo Power Comparison
 
-## Mục tiêu
+### 3.1 Mục tiêu
 
-So sánh **power** (sức mạnh) của 4 bài kiểm tra heteroscedasticity:
+So sánh **Power** (khả năng phát hiện) của 2 tests:
 
-1. **Sup-GQ** (Supremum Goldfeld-Quandt)
-2. **Fisher's G** (Combined G statistic)
-3. **Breusch-Pagan**
-4. **White Test**
+| Test | Tên đầy đủ | Ý tưởng |
+|------|------------|---------|
+| **Sup-GQ** | Supremum Goldfeld-Quandt | Tìm F-statistic LỚN NHẤT qua tất cả breakpoints |
+| **Fisher's G** | Fisher's Combined Test | Kết hợp p-values từ tất cả breakpoints |
 
-## [A.1] PARAMETERS (Dòng 91-108)
+### 3.2 Data Generating Process (DGP)
+
+**Mô hình tạo dữ liệu giả lập:**
 
 ```r
-N <- 100              # Kích thước mẫu
-R <- R_SIMS           # Số lần Monte Carlo
-B <- B_BOOT           # Số lần Bootstrap
-Delta <- c(0, 1, 3)   # Mức độ heteroscedasticity
-trim <- 0.15          # Trimming 15% hai đầu
-alpha <- 0.05         # Mức ý nghĩa 5%
-```
-
-### Ý nghĩa của Delta:
-
-| Delta | Phương sai sau breakpoint | Ý nghĩa |
-|-------|--------------------------|---------|
-| 0 | σ² = 1 (không đổi) | **Size check**: H₀ đúng, tỷ lệ reject phải ≈ 0.05 |
-| 1 | σ² = 2 (gấp đôi) | Heteroscedasticity nhẹ |
-| 3 | σ² = 4 (gấp 4) | Heteroscedasticity mạnh |
-
----
-
-## [A.2] FUNCTIONS (Dòng 110-211)
-
-### 1. `generate_data(n, delta)` - Tạo dữ liệu mô phỏng
-
-**Mô hình DGP (Data Generating Process):**
-
-```
-y_t = 1 + x_t + ε_t
-
-Trong đó:
-- x_t ~ N(0, 1)
-- ε_t ~ N(0, σ_t²)
-- σ_t² = 1           nếu t ≤ n/2 (nửa đầu)
-- σ_t² = 1 + delta   nếu t > n/2 (nửa sau)
-```
-
-**Giải thích:**
-- Đây là mô hình hồi quy đơn giản với **structural break** ở giữa mẫu
-- Phương sai thay đổi đột ngột tại điểm τ = 0.5
-
-```r
+# Dòng 111-117
 generate_data <- function(n, delta) {
-  x <- rnorm(n, mean = 0, sd = 1)                    # Biến độc lập
-  var_structure <- c(rep(1, n/2), rep(1 + delta, n/2))  # Cấu trúc phương sai
-  epsilon <- rnorm(n, mean = 0, sd = sqrt(var_structure)) # Sai số
-  y <- 1 + x + epsilon                               # Biến phụ thuộc
+  x <- rnorm(n, mean = 0, sd = 1)
+  var_structure <- c(rep(1, n/2), rep(1 + delta, n/2))
+  epsilon <- rnorm(n, mean = 0, sd = sqrt(var_structure))
+  y <- 1 + x + epsilon
   return(data.frame(y = y, x = x))
 }
 ```
 
----
-
-### 2. `calc_statistics(y, x, trim)` - Tính Sup-GQ và Fisher's G
-
-**Thuật toán:**
+**Giải thích bằng hình:**
 
 ```
-Bước 1: Xác định lưới breakpoint τ ∈ [15%, 85%]
-Bước 2: Với mỗi τ:
-    a) Chia mẫu thành 2 phần: [1, τ] và [τ+1, n]
-    b) Chạy OLS riêng biệt cho mỗi phần
-    c) Tính RSS₁, RSS₂ (Residual Sum of Squares)
-    d) Tính F-statistic: F = (RSS₂/df₂) / (RSS₁/df₁)
-    e) Tính p-value của F
-Bước 3:
-    - Sup-GQ = max(F) qua tất cả τ
-    - G = -2 × Σlog(p_values) (Fisher's method)
+Mô hình: y = 1 + x + ε
+
+Với N = 100 observations:
+
+Observation:  1  2  3  ...  50 | 51  52  ...  100
+              ←── Nửa đầu ──→ | ←── Nửa sau ──→
+Variance:          σ² = 1     |    σ² = 1 + delta
+
+Delta = 0: σ² = 1 toàn bộ     → Homoscedastic (H₀ đúng)
+Delta = 1: σ² = 1 | σ² = 2    → Variance gấp đôi ở nửa sau
+Delta = 2: σ² = 1 | σ² = 3    → Variance gấp ba ở nửa sau
 ```
 
-**Công thức chi tiết:**
-
-$$F_{GQ}(\tau) = \frac{RSS_2 / (n - \tau - 2)}{RSS_1 / (\tau - 2)}$$
-
-$$G = -2 \sum_{i=1}^{M} \log(p_i)$$
-
-Dưới H₀, G ~ χ²(2M) với M là số điểm trong lưới.
-
----
-
-### 3. `breusch_pagan_test(y, x)` - Breusch-Pagan Test
-
-**Nguyên lý:**
-- Kiểm tra xem phương sai của sai số có phụ thuộc vào biến độc lập không
-- Sử dụng package `lmtest`
+### 3.3 Hàm calc_statistics() - Tính Sup-GQ và Fisher's G
 
 ```r
-breusch_pagan_test <- function(y, x) {
-  model <- lm(y ~ x)
-  bp_test <- bptest(model)    # Từ package lmtest
-  return(bp_test$p.value)
+# Dòng 123-170
+calc_statistics <- function(y, x, trim = 0.15) {
+  ...
 }
 ```
 
----
+**Thuật toán chi tiết:**
 
-### 4. `white_test(y, x)` - White Test
+```
+BƯỚC 1: Xác định các điểm chia có thể (breakpoints)
+        trim = 15% → τ chạy từ observation 15 đến 85 (với N=100)
 
-**Nguyên lý:**
-- Hồi quy ε̂² lên x và x²
-- Kiểm tra R² của hồi quy phụ
+BƯỚC 2: Với MỖI điểm chia τ:
+
+        Dữ liệu: [obs 1, ..., obs τ] | [obs τ+1, ..., obs n]
+                    Nhóm 1           |      Nhóm 2
+
+        a) Chạy OLS riêng cho mỗi nhóm:
+           Nhóm 1: y₁ = β₀ + β₁x₁ + ε₁  →  RSS₁ = Σ(residuals)²
+           Nhóm 2: y₂ = β₀ + β₁x₂ + ε₂  →  RSS₂ = Σ(residuals)²
+
+        b) Tính F-statistic:
+           F = (RSS₂/df₂) / (RSS₁/df₁)
+
+           Nếu variance nhóm 2 > nhóm 1 → F sẽ lớn
+
+        c) Tính p-value của F
+
+BƯỚC 3: Tổng hợp kết quả
+        Sup-GQ = max(F)           ← Lấy F lớn nhất
+        G = -2 × Σ log(p-values)  ← Kết hợp p-values
+```
+
+**Tại sao dùng `.lm.fit()` thay vì `lm()`?**
 
 ```r
-white_test <- function(y, x) {
-  model <- lm(y ~ x)
-  resid_sq <- resid(model)^2        # ε̂²
-  x_sq <- x^2
-  aux_model <- lm(resid_sq ~ x + x_sq)  # Hồi quy phụ
-  r_squared <- summary(aux_model)$r.squared
-  white_stat <- n * r_squared       # nR² ~ χ²(2)
-  p_value <- pchisq(white_stat, df = 2, lower.tail = FALSE)
-  return(p_value)
-}
+# Dòng 145, 152
+fit1 <- .lm.fit(X1, y1)  # Nhanh hơn và ổn định số học
 ```
 
----
+- `.lm.fit()` là internal function của R, dùng QR decomposition
+- Nhanh hơn `lm()` vì không parse formula
+- Ổn định số học hơn `solve(t(X) %*% X) %*% t(X) %*% y`
 
-### 5. `wild_bootstrap(y_obs, x_obs, B, stats_obs)` - Wild Bootstrap
+### 3.4 Parametric Bootstrap
 
-**Tại sao dùng Wild Bootstrap?**
-- Phân phối của Sup-GQ và G không chuẩn → không có critical value lý thuyết
-- Wild bootstrap bảo toàn cấu trúc heteroscedasticity
+**Vấn đề:** Sup-GQ và G không có phân phối lý thuyết chuẩn → không có critical value sẵn
 
-**Thuật toán:**
-
-```
-Bước 1: Fit model dưới H₀: y = β₀ + β₁x + ε
-Bước 2: Lấy ŷ (fitted) và ê (residuals)
-Bước 3: Lặp B lần:
-    a) Sinh v ~ Rademacher: v ∈ {-1, +1} với xác suất bằng nhau
-    b) Tạo y* = ŷ + ê × v (bootstrap sample)
-    c) Tính T* (statistic trên bootstrap sample)
-Bước 4: p-value = Tỷ lệ (T* ≥ T_obs)
-```
+**Giải pháp:** Dùng Bootstrap để xấp xỉ phân phối dưới H₀
 
 ```r
+# Dòng 172-199
 wild_bootstrap <- function(y_obs, x_obs, B, stats_obs) {
+  # Fit model
   null_model <- lm(y_obs ~ x_obs)
-  y_hat <- fitted(null_model)      # ŷ
-  e_hat <- resid(null_model)       # ê
+  y_hat <- fitted(null_model)
+  e_hat <- resid(null_model)
+
+  # Ước lượng variance CHUNG dưới H₀
+  sigma_hat <- sqrt(sum(e_hat^2) / (n - 2))
 
   for (b in 1:B) {
-    v <- sample(c(-1, 1), n, replace = TRUE)  # Rademacher
-    y_star <- y_hat + e_hat * v               # Bootstrap sample
+    # Tạo errors MỚI từ N(0, σ²) - ĐỒNG NHẤT!
+    e_star <- rnorm(n, 0, sigma_hat)
+    y_star <- y_hat + e_star
+
+    # Tính test statistics trên bootstrap sample
     stats_star <- calc_statistics(y_star, x_obs)
-    # Lưu kết quả...
   }
 
+  # p-value = tỷ lệ bootstrap stat ≥ observed stat
   pval_sup <- mean(boot_sup_vals >= stats_obs$sup)
   pval_g <- mean(boot_g_vals >= stats_obs$g)
-  return(list(pval_sup = pval_sup, pval_g = pval_g))
 }
 ```
 
----
-
-## [A.3] MONTE CARLO SIMULATION (Dòng 214-273)
-
-**Quy trình:**
+**QUAN TRỌNG - Tại sao dùng Parametric Bootstrap?**
 
 ```
-Với mỗi delta ∈ {0, 1, 3}:
-    Lặp R lần (Monte Carlo):
-        1. Sinh dữ liệu với delta
+H₀: Homoscedasticity (variance đồng nhất)
+
+→ Dưới H₀, tất cả errors phải có CÙNG variance σ²
+→ Bootstrap phải tạo errors từ N(0, σ²) với σ² ĐỒNG NHẤT
+→ KHÔNG dùng wild bootstrap (e_hat * v) vì nó giữ nguyên pattern heteroscedasticity!
+```
+
+### 3.5 Monte Carlo Simulation với Parallel Processing
+
+```r
+# Dòng 203-276
+n_cores <- detectCores() - 2  # Để lại 2 cores cho hệ thống
+cl <- makeCluster(n_cores)
+parLapply(cl, 1:R, function(r) { ... })  # Chạy song song
+stopCluster(cl)
+```
+
+**Quy trình Monte Carlo:**
+
+```
+Với mỗi delta ∈ {0, 1, 2}:
+    Lặp R = 1000 lần (song song trên nhiều cores):
+        1. Generate data với delta
         2. Tính Sup-GQ và G observed
-        3. Wild bootstrap → p-values cho Sup-GQ, G
-        4. Tính p-values cho BP và White
-        5. Đếm số lần reject H₀ (p < 0.05)
-    Power = (số reject) / R
+        3. Bootstrap 499 lần → p-values
+        4. Reject nếu p-value < 0.05
+
+    Power = (Số lần reject) / 1000
 ```
+
+**Tại sao cần Parallel?**
+- 1000 MC × 499 Bootstrap = ~500,000 iterations mỗi delta
+- Không parallel: 10+ giờ
+- 10 cores parallel: ~1-2 giờ
 
 ---
 
-## [A.4] OUTPUT - Bảng kết quả Part A
+## 4. Part B: Quantile Transfer Entropy (QTE)
+
+### 4.1 Quantile Regression là gì?
+
+**OLS thông thường:** Ước lượng **TRUNG BÌNH** có điều kiện E[Y|X]
+
+**Quantile Regression:** Ước lượng **PHÂN VỊ** có điều kiện Q_τ[Y|X]
 
 ```
-Table 1: Empirical Size (δ=0) and Power (δ=1,3) at 5% Significance Level
-─────────────────────────────────────────────────────────────────────────
-Delta      | Sup-GQ     | G (Fisher) | Breusch-Pagan | White
-─────────────────────────────────────────────────────────────────────────
-0 (Size)   | 0.050      | 0.048      | 0.052         | 0.048
-1          | 0.320      | 0.380      | 0.250         | 0.220
-3          | 0.850      | 0.920      | 0.650         | 0.580
-─────────────────────────────────────────────────────────────────────────
+τ = 0.10: Quantile 10% (đuôi trái - worst 10% outcomes)
+τ = 0.50: Quantile 50% (median - trung vị)
+τ = 0.90: Quantile 90% (đuôi phải - best 10% outcomes)
 ```
 
-**Cách đọc kết quả:**
-- **Delta = 0 (Size):** Phải ≈ 0.05 (nominal level). Nếu > 0.05 → test bị **over-sized**
-- **Delta = 1, 3 (Power):** Càng cao càng tốt. Test nào có power cao hơn → phát hiện heteroscedasticity tốt hơn
+**Ví dụ thực tế:**
+- τ = 0.10 của stock returns = worst 10% days → quan trọng cho risk management
+- τ = 0.90 = best 10% days
 
----
+### 4.2 Transfer Entropy là gì?
 
-# PART B: QUANTILE TRANSFER ENTROPY (QTE)
+**Câu hỏi:** "X có chứa thông tin hữu ích để dự báo Y không?"
 
-## Mục tiêu
+```
+Restricted model (R):   Q_τ(Y_t | Y_{t-k})           ← Chỉ dùng Y quá khứ
+Unrestricted model (U): Q_τ(Y_t | Y_{t-k}, X_{t-k})  ← Dùng cả X quá khứ
 
-Kiểm tra **quan hệ nhân quả Granger theo phân vị** từ X (uncertainty) đến Y (returns):
+Nếu model U tốt hơn model R nhiều → X có causality lên Y
+```
 
-> "X có chứa thông tin hữu ích để dự báo phân vị τ của Y không?"
-
-## [B.1] PARAMETERS (Dòng 325-338)
+### 4.3 Cách tính QTE
 
 ```r
-tau_values <- c(0.10, 0.50, 0.90)  # Các phân vị
-k_values <- c(1, 2, 3, 5)          # Các độ trễ
-```
-
-**Ý nghĩa các phân vị:**
-
-| τ | Ý nghĩa | Ứng dụng |
-|---|---------|----------|
-| 0.10 | Đuôi trái (10% thấp nhất) | Extreme losses, risk management |
-| 0.50 | Trung vị | Xu hướng trung bình |
-| 0.90 | Đuôi phải (10% cao nhất) | Extreme gains |
-
----
-
-## [B.2] DATA PREPARATION (Dòng 340-374)
-
-### Hàm sinh dữ liệu mô phỏng:
-
-```r
-generate_qte_data <- function(n = 2000, causality = 0.15) {
-  # X: AR(1) process (mô phỏng uncertainty)
-  x[t] = 0.3 × x[t-1] + ε_t
-
-  # Y: Phụ thuộc vào X với causality
-  y[t] = 0.2 × y[t-1] + causality × x[t-1] + η_t
-
-  # η_t có phương sai phụ thuộc vào |x[t-1]| (GARCH-like)
-}
-```
-
-**Lưu ý:** Trong thực tế, thay thế bằng dữ liệu thật (EPU và S&P500 returns).
-
----
-
-## [B.3] QTE FUNCTIONS (Dòng 376-456)
-
-### 1. `check_function(u, tau)` - Hàm kiểm tra phân vị
-
-$$\rho_\tau(u) = u \cdot (\tau - \mathbf{1}_{u < 0})$$
-
-Đây là hàm mất mát của quantile regression:
-- Nếu u ≥ 0: ρ(u) = τ × u
-- Nếu u < 0: ρ(u) = (τ - 1) × u
-
----
-
-### 2. `calculate_qte(Y, X, tau, k)` - Tính QTE
-
-**Công thức QTE:**
-
-$$QTE_{\tau,k} = \log\left(\sum \rho_\tau(\hat{u}_R)\right) - \log\left(\sum \rho_\tau(\hat{u}_U)\right)$$
-
-Trong đó:
-- **Restricted model (R):** $Q_\tau(Y_t | Y_{t-k})$ - chỉ dùng lag của Y
-- **Unrestricted model (U):** $Q_\tau(Y_t | Y_{t-k}, X_{t-k})$ - dùng cả lag của X
-
-**Diễn giải:**
-- QTE > 0: X chứa thông tin hữu ích cho dự báo Y
-- QTE ≈ 0: X không có quan hệ nhân quả với Y
-
-```r
+# Dòng 385-407
 calculate_qte <- function(Y, X, tau, k) {
-  # Chuẩn bị dữ liệu với lag k
-  Y_t <- Y[(k+1):n]
-  Y_lag <- Y[1:(n-k)]
-  X_lag <- X[1:(n-k)]
+  # Chuẩn bị data với lag k
+  Y_t <- Y[(k+1):n]      # Y hiện tại
+  Y_lag <- Y[1:(n-k)]    # Y quá khứ
+  X_lag <- X[1:(n-k)]    # X quá khứ
 
-  # Restricted: Q(Y_t | Y_lag)
+  # Restricted model
   model_r <- rq(Y_t ~ Y_lag, tau = tau)
   loss_r <- sum(check_function(residuals(model_r), tau))
 
-  # Unrestricted: Q(Y_t | Y_lag, X_lag)
+  # Unrestricted model
   model_u <- rq(Y_t ~ Y_lag + X_lag, tau = tau)
   loss_u <- sum(check_function(residuals(model_u), tau))
 
+  # QTE
   qte <- log(loss_r) - log(loss_u)
   return(qte)
 }
 ```
 
----
-
-### 3. `stationary_bootstrap_indices(n, block_length)` - Stationary Bootstrap
-
-**Tại sao dùng Stationary Bootstrap?**
-- Dữ liệu chuỗi thời gian có autocorrelation
-- Block bootstrap bảo toàn cấu trúc phụ thuộc
-
-**Thuật toán:**
-- Block length ngẫu nhiên theo phân phối geometric
-- Trung bình block length = n^(1/3)
-
----
-
-### 4. `bootstrap_qte_test(Y, X, tau, k, B)` - Bootstrap Test
-
-**Quy trình:**
+**Công thức:**
 
 ```
-1. Tính QTE_obs từ dữ liệu gốc
-2. Lặp B lần:
-   a) Resample X và Y độc lập (impose H₀: X không gây ra Y)
-   b) Tính QTE* từ bootstrap sample
-3. P-value = Tỷ lệ (QTE* ≥ QTE_obs)
+QTE = log(Loss_R) - log(Loss_U)
+
+Loss = Σ ρ_τ(residuals)  (quantile loss function)
+
+ρ_τ(u) = u × (τ - I(u<0))
+       = { τ × u      nếu u ≥ 0
+       = { (τ-1) × u  nếu u < 0
 ```
+
+**Interpretation:**
+- QTE > 0: Loss_R > Loss_U → Model có X tốt hơn → X có causality
+- QTE ≈ 0: Hai models tương đương → X không có causality
+
+### 4.4 Stationary Bootstrap
+
+**Vấn đề:** Time series có autocorrelation → không thể bootstrap i.i.d.
+
+**Giải pháp:** Block bootstrap - lấy các blocks liên tiếp
+
+```r
+# Dòng 409-426
+stationary_bootstrap_indices <- function(n, block_length) {
+  # Block length ngẫu nhiên (geometric distribution)
+  # Trung bình block length = n^(1/3) ≈ 12 với n=2000
+}
+```
+
+```
+Original: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, ...]
+
+Stationary Bootstrap:
+  Chọn start = 3, block length = 4  → [3, 4, 5, 6]
+  Chọn start = 8, block length = 2  → [8, 9]
+  Chọn start = 1, block length = 3  → [1, 2, 3]
+  ...
+
+Result: [3, 4, 5, 6, 8, 9, 1, 2, 3, ...]
+```
+
+### 4.5 Bootstrap Test cho QTE
+
+```r
+# Dòng 428-452
+bootstrap_qte_test <- function(Y, X, tau, k, B) {
+  qte_obs <- calculate_qte(Y, X, tau, k)
+
+  for (b in 1:B) {
+    # Resample X và Y ĐỘC LẬP → phá vỡ dependence (impose H₀)
+    idx_X <- stationary_bootstrap_indices(n, block_length)
+    idx_Y <- stationary_bootstrap_indices(n, block_length)  # KHÁC idx_X!
+
+    X_star <- X[idx_X]
+    Y_star <- Y[idx_Y]
+
+    qte_boot[b] <- calculate_qte(Y_star, X_star, tau, k)
+  }
+
+  p_value <- mean(qte_boot >= qte_obs)
+}
+```
+
+**Key insight:** Resample X và Y ĐỘC LẬP để impose H₀ (X không cause Y)
 
 ---
 
-## [B.4-B.5] OUTPUT - Bảng kết quả Part B
+## 5. Hướng Dẫn Chạy
+
+### Trong RStudio:
+
+1. Mở file `Coursework_Complete.R`
+2. Kiểm tra configuration:
+   ```r
+   RUN_PART_A <- TRUE
+   RUN_PART_B <- TRUE
+   ```
+3. Nhấn **Ctrl+Shift+Enter** (Source) hoặc nút **Source**
+
+### Trong Terminal:
+
+```bash
+cd /path/to/monte_prj
+Rscript Coursework_Complete.R
+```
+
+### Dừng chương trình:
+
+- RStudio: Nhấn nút **Stop** (đỏ) hoặc **Esc**
+- Terminal: **Ctrl+C**
+
+### Tips:
+
+1. **Chạy thử nhanh:** Tạm giảm R_SIMS = 50, B_BOOT = 99
+2. **Theo dõi tiến độ:** Xem console - hiện delta đang chạy và thời gian
+3. **Máy yếu:** Có thể chạy qua đêm
+
+---
+
+## 6. Đọc Hiểu Kết Quả
+
+### Part A - Bảng Power:
+
+```
+───────────────────────────────────────────
+   Delta    Power (SupGQ)    Power (G)
+───────────────────────────────────────────
+       0           0.052        0.048     ← SIZE CHECK
+       1           0.450        0.380     ← POWER (mild het.)
+       2           0.820        0.750     ← POWER (strong het.)
+───────────────────────────────────────────
+```
+
+**Cách đọc:**
+
+| Delta | Ý nghĩa | Kỳ vọng |
+|-------|---------|---------|
+| 0 | Size check (H₀ đúng) | ≈ 0.05 (nominal level) |
+| 1 | Heteroscedasticity nhẹ | 0.3 - 0.6 |
+| 2 | Heteroscedasticity mạnh | 0.7 - 0.9 |
+
+**Interpretation:**
+- Delta = 0 phải ≈ 0.05. Nếu > 0.10 → test bị **over-sized** (reject quá nhiều)
+- So sánh Sup-GQ vs G: Test nào có power cao hơn → test đó tốt hơn
+
+### Part B - Bảng QTE:
 
 ```
 Table 2: QTE Estimates (*** = significant at 5%)
@@ -379,124 +417,70 @@ Table 2: QTE Estimates (*** = significant at 5%)
 Lag (k)  | tau = 0.10      | tau = 0.50      | tau = 0.90
 ─────────────────────────────────────────────────────────────────────────
 1        | 0.0234***       | 0.0089          | 0.0312***
-2        | 0.0198**        | 0.0045          | 0.0256**
+2        | 0.0198***       | 0.0045          | 0.0256**
 3        | 0.0156          | 0.0032          | 0.0189
 5        | 0.0098          | 0.0021          | 0.0134
 ─────────────────────────────────────────────────────────────────────────
 ```
 
-**Cách đọc kết quả:**
-- `***` = p-value < 0.05 → có quan hệ nhân quả có ý nghĩa thống kê
-- QTE cao ở τ = 0.10 và 0.90 → X ảnh hưởng đến đuôi phân phối của Y
-- QTE giảm khi k tăng → hiệu ứng giảm dần theo thời gian
+**Cách đọc:**
+- `***` = p-value < 0.05 → có causality có ý nghĩa thống kê
+- QTE > 0 với `***` → X có ảnh hưởng đến Y tại quantile đó
+
+**Patterns thường thấy:**
+- Significant ở τ = 0.10, 0.90 nhưng không ở 0.50 → **Tail risk spillover**
+- QTE giảm khi k tăng → Effect giảm dần theo thời gian
 
 ---
 
-# SƠ ĐỒ LUỒNG CHƯƠNG TRÌNH
+## Tổng Hợp Các Khái Niệm
+
+| Thuật ngữ | Định nghĩa |
+|-----------|------------|
+| **Size** | P(Reject H₀ \| H₀ đúng) - tỷ lệ "báo động giả" |
+| **Power** | P(Reject H₀ \| H₁ đúng) - khả năng phát hiện |
+| **Sup-GQ** | max(F-statistics) qua tất cả breakpoints |
+| **Fisher's G** | -2Σlog(p-values) - combined test |
+| **Bootstrap** | Resampling để xấp xỉ phân phối |
+| **QTE** | log(Loss_R) - log(Loss_U) - đo causality |
+| **Quantile τ** | Điểm mà τ% observations nằm dưới |
+
+---
+
+## Packages Sử Dụng
+
+| Package | Mục đích |
+|---------|----------|
+| `parallel` | Parallel processing (nhiều cores) |
+| `quantreg` | Quantile regression - hàm `rq()` |
+| `tseries` | Time series analysis |
+| `zoo`, `xts` | Time series objects |
+| `dplyr` | Data manipulation |
+| `quantmod` | Financial data |
+
+---
+
+## Sơ Đồ Tóm Tắt
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    START                                    │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  [0] CONFIGURATION                                          │
-│  - Chọn QUICK_TEST = TRUE/FALSE                             │
-│  - Chọn RUN_PART_A, RUN_PART_B                              │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│  [1] SETUP & PACKAGES                                       │
-│  - Load: lmtest, quantreg, tseries, zoo, xts, dplyr         │
-└─────────────────────────────────────────────────────────────┘
-                           │
-           ┌───────────────┴───────────────┐
-           ▼                               ▼
-┌──────────────────────┐       ┌──────────────────────┐
-│      PART A          │       │      PART B          │
-│   (if RUN_PART_A)    │       │   (if RUN_PART_B)    │
-└──────────────────────┘       └──────────────────────┘
-           │                               │
-           ▼                               ▼
-┌──────────────────────┐       ┌──────────────────────┐
-│ For delta in {0,1,3} │       │ For tau in {.1,.5,.9}│
-│   For r in 1:R       │       │   For k in {1,2,3,5} │
-│     - Generate data  │       │     - Calculate QTE  │
-│     - Wild bootstrap │       │     - Bootstrap test │
-│     - Count rejects  │       │     - Store results  │
-└──────────────────────┘       └──────────────────────┘
-           │                               │
-           ▼                               ▼
-┌──────────────────────┐       ┌──────────────────────┐
-│    Output Table 1    │       │  Output Tables 2, 3  │
-│  Size & Power Table  │       │  QTE & P-values      │
-└──────────────────────┘       └──────────────────────┘
-           │                               │
-           └───────────────┬───────────────┘
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    FINAL SUMMARY                            │
-│  - Print kết quả Part A                                     │
-│  - Print significant QTE results Part B                     │
-└─────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                         END                                 │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                    COURSEWORK_COMPLETE.R                        │
+├─────────────────────────────────────────────────────────────────┤
+│  PART A: Monte Carlo Power Comparison                           │
+│  ├── generate_data(): Tạo data với heteroscedasticity           │
+│  ├── calc_statistics(): Tính Sup-GQ và Fisher's G               │
+│  ├── wild_bootstrap(): Parametric bootstrap (impose H₀)         │
+│  ├── parLapply(): Parallel processing                           │
+│  └── Output: Power table cho Delta = 0, 1, 2                    │
+├─────────────────────────────────────────────────────────────────┤
+│  PART B: Quantile Transfer Entropy                              │
+│  ├── calculate_qte(): Tính QTE cho mỗi (tau, k)                 │
+│  ├── stationary_bootstrap(): Bootstrap cho time series          │
+│  ├── bootstrap_qte_test(): Test significance                    │
+│  └── Output: QTE estimates với p-values                         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-# BẢNG TỔNG HỢP CÁC KHÁI NIỆM
-
-| Thuật ngữ | Định nghĩa | Công thức/Ý nghĩa |
-|-----------|------------|-------------------|
-| **Size** | Tỷ lệ reject khi H₀ đúng | Phải ≈ α (nominal level) |
-| **Power** | Tỷ lệ reject khi H₁ đúng | Càng cao càng tốt |
-| **Sup-GQ** | Maximum F-test across breakpoints | max(F(τ)) |
-| **Fisher's G** | Combined p-values | -2Σlog(p) |
-| **Wild Bootstrap** | Resampling với Rademacher | y* = ŷ + ê×v |
-| **QTE** | Quantile Transfer Entropy | log(Loss_R) - log(Loss_U) |
-| **Quantile τ** | Phân vị thứ τ | P(Y ≤ Q_τ) = τ |
-
----
-
-# HƯỚNG DẪN SỬ DỤNG
-
-## Chạy test nhanh (5 phút):
-
-```r
-QUICK_TEST <- TRUE
-RUN_PART_A <- TRUE
-RUN_PART_B <- TRUE
-source("Coursework_Complete.R")
-```
-
-## Chạy đầy đủ cho submission (~1 giờ):
-
-```r
-QUICK_TEST <- FALSE
-RUN_PART_A <- TRUE
-RUN_PART_B <- TRUE
-source("Coursework_Complete.R")
-```
-
-## Chỉ chạy Part A:
-
-```r
-RUN_PART_A <- TRUE
-RUN_PART_B <- FALSE
-source("Coursework_Complete.R")
-```
-
----
-
-# LƯU Ý QUAN TRỌNG
-
-1. **Seed:** `set.seed(123)` đảm bảo kết quả reproducible
-2. **Part B Data:** Đang dùng dữ liệu mô phỏng → thay bằng dữ liệu thật (EPU, S&P500)
-3. **Thời gian chạy:** Full simulation rất lâu → chạy trên máy mạnh hoặc cluster
-4. **Interpretation:** Size check (δ=0) quan trọng để đánh giá test có reliable không
+*Cập nhật: 2026-01-05*
