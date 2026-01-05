@@ -229,7 +229,7 @@ if (RUN_PART_A) {
 
     # Export functions and variables to cluster
     clusterExport(cl, c("generate_data", "calc_statistics", "wild_bootstrap",
-                        "N", "delta", "B", "alpha"), envir = environment())
+                        "single_mc_rep", "N", "delta", "B", "alpha"), envir = environment())
 
     # Set seed for reproducibility on each worker
     clusterSetRNGStream(cl, 123 + which(Delta == delta))
