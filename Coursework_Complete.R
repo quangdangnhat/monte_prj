@@ -48,7 +48,7 @@ set.seed(123)
 # Install and load packages
 cat(">>> [1] Loading packages...\n")
 
-packages <- c("quantreg", "tseries", "zoo", "xts", "dplyr", "quantmod", "parallel")
+packages <- c("quantreg", "tseries", "zoo", "xts", "dplyr", "quantmod", "parallel", "lmtest")
 
 for (pkg in packages) {
   if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
@@ -87,7 +87,7 @@ if (RUN_PART_A) {
   N <- 100              # Sample size
   R <- R_SIMS           # Monte Carlo replications
   B <- B_BOOT           # Bootstrap replications
-  Delta <- c(0, 1, 2)   # Chạy lại tất cả với bootstrap đã sửa
+  Delta <- c(0, 1, 3)   # Heteroscedasticity levels (0 = size check)
   trim <- 0.15          # Trimming percentage (15% on both ends)
   alpha <- 0.05         # Significance level
 
@@ -169,6 +169,28 @@ if (RUN_PART_A) {
     return(list(sup = sup_gq, g = g_stat))
   }
 
+  # Function: Breusch-Pagan Test
+  # Tests if variance of errors depends on X
+  breusch_pagan_test <- function(y, x) {
+    model <- lm(y ~ x)
+    bp_result <- bptest(model)
+    return(bp_result$p.value)
+  }
+
+  # Function: White Test
+  # Tests heteroscedasticity by regressing squared residuals on X and X^2
+  white_test <- function(y, x) {
+    n <- length(y)
+    model <- lm(y ~ x)
+    resid_sq <- resid(model)^2
+    x_sq <- x^2
+    aux_model <- lm(resid_sq ~ x + x_sq)
+    r_squared <- summary(aux_model)$r.squared
+    white_stat <- n * r_squared
+    p_value <- pchisq(white_stat, df = 2, lower.tail = FALSE)
+    return(p_value)
+  }
+
   # Function: Bootstrap under H0 (homoscedasticity)
   # Parametric bootstrap: generate errors from N(0, sigma^2) to impose H0
   wild_bootstrap <- function(y_obs, x_obs, B, stats_obs) {
@@ -224,17 +246,25 @@ if (RUN_PART_A) {
     # Wild Bootstrap for Sup-GQ and G
     boot_results <- wild_bootstrap(y_obs, x_obs, B, stats_obs)
 
+    # Breusch-Pagan and White tests
+    pval_bp <- breusch_pagan_test(y_obs, x_obs)
+    pval_white <- white_test(y_obs, x_obs)
+
     # Return rejection indicators
     return(c(
       reject_sup = as.integer(boot_results$pval_sup < alpha),
-      reject_g = as.integer(boot_results$pval_g < alpha)
+      reject_g = as.integer(boot_results$pval_g < alpha),
+      reject_bp = as.integer(pval_bp < alpha),
+      reject_white = as.integer(pval_white < alpha)
     ))
   }
 
   results_A <- data.frame(
     Delta = numeric(),
     Power_SupGQ = numeric(),
-    Power_G = numeric()
+    Power_G = numeric(),
+    Power_BP = numeric(),
+    Power_White = numeric()
   )
 
   for (delta in Delta) {
@@ -246,7 +276,9 @@ if (RUN_PART_A) {
 
     # Export functions and variables to cluster
     clusterExport(cl, c("generate_data", "calc_statistics", "wild_bootstrap",
+                        "breusch_pagan_test", "white_test",
                         "single_mc_rep", "N", "delta", "B", "alpha"), envir = environment())
+    clusterEvalQ(cl, library(lmtest))
 
     # Set seed for reproducibility on each worker
     clusterSetRNGStream(cl, 123 + which(Delta == delta))
@@ -262,17 +294,21 @@ if (RUN_PART_A) {
     # Aggregate results
     reject_sup <- sum(sapply(mc_results, function(x) x["reject_sup"]))
     reject_g <- sum(sapply(mc_results, function(x) x["reject_g"]))
+    reject_bp <- sum(sapply(mc_results, function(x) x["reject_bp"]))
+    reject_white <- sum(sapply(mc_results, function(x) x["reject_white"]))
 
     # Calculate power
     results_A <- rbind(results_A, data.frame(
       Delta = delta,
       Power_SupGQ = reject_sup / R,
-      Power_G = reject_g / R
+      Power_G = reject_g / R,
+      Power_BP = reject_bp / R,
+      Power_White = reject_white / R
     ))
 
     elapsed <- round(difftime(Sys.time(), start_time, units = "mins"), 1)
-    cat(sprintf(" Done in %.1f mins (Sup=%.3f, G=%.3f)\n",
-                elapsed, reject_sup/R, reject_g/R))
+    cat(sprintf(" Done in %.1f mins (Sup=%.3f, G=%.3f, BP=%.3f, W=%.3f)\n",
+                elapsed, reject_sup/R, reject_g/R, reject_bp/R, reject_white/R))
   }
 
   # ─────────────────────────────────────────────────────────────────────────────
@@ -284,22 +320,25 @@ if (RUN_PART_A) {
   cat("                    PART A RESULTS                                         \n")
   cat("═══════════════════════════════════════════════════════════════════════════\n")
   cat("\n")
-  cat("───────────────────────────────────────────\n")
-  cat(sprintf("%8s %15s %12s\n", "Delta", "Power (SupGQ)", "Power (G)"))
-  cat("───────────────────────────────────────────\n")
+  cat("Table 1: Empirical Size (δ=0) and Power (δ=1,3) at 5% Significance Level\n")
+  cat("─────────────────────────────────────────────────────────────────────────────\n")
+  cat(sprintf("%8s %12s %12s %12s %12s\n", "Delta", "Sup-GQ", "Fisher's G", "Breusch-Pagan", "White"))
+  cat("─────────────────────────────────────────────────────────────────────────────\n")
 
   for (i in 1:nrow(results_A)) {
-    cat(sprintf("%8d %15.3f %12.3f\n",
+    cat(sprintf("%8d %12.3f %12.3f %12.3f %12.3f\n",
                 results_A$Delta[i],
                 results_A$Power_SupGQ[i],
-                results_A$Power_G[i]))
+                results_A$Power_G[i],
+                results_A$Power_BP[i],
+                results_A$Power_White[i]))
   }
-  cat("───────────────────────────────────────────\n")
+  cat("─────────────────────────────────────────────────────────────────────────────\n")
 
   cat("\nInterpretation:\n")
   cat("• Delta = 0: Size check (should be ≈ 0.05 = nominal level)\n")
   cat("• Delta = 1: Variance doubles after midpoint\n")
-  cat("• Delta = 2: Variance triples after midpoint\n")
+  cat("• Delta = 3: Variance quadruples after midpoint\n")
   cat("• Higher power = better at detecting heteroscedasticity\n")
   cat("\n")
 
