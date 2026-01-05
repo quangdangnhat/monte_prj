@@ -119,7 +119,7 @@ if (RUN_PART_A) {
   # Function: Calculate Sup-GQ and Fisher's G statistics (OPTIMIZED)
   # Sup-GQ: Maximum F-statistic across all split points
   # G (Fisher): -2 * sum(log(p_values))
-  # Using direct matrix algebra instead of lm() for speed
+  # Using .lm.fit() for numerical stability and speed
   calc_statistics <- function(y, x, trim = 0.15) {
     n <- length(y)
     tau_min <- floor(n * trim)
@@ -139,18 +139,18 @@ if (RUN_PART_A) {
       idx1 <- 1:tau
       idx2 <- (tau + 1):n
 
-      # First subsample - direct OLS
+      # First subsample - using .lm.fit (QR decomposition, numerically stable)
       X1 <- X_full[idx1, , drop = FALSE]
       y1 <- y[idx1]
-      beta1 <- solve(t(X1) %*% X1) %*% t(X1) %*% y1
-      rss1 <- sum((y1 - X1 %*% beta1)^2)
+      fit1 <- .lm.fit(X1, y1)
+      rss1 <- sum(fit1$residuals^2)
       df1 <- tau - 2
 
-      # Second subsample - direct OLS
+      # Second subsample
       X2 <- X_full[idx2, , drop = FALSE]
       y2 <- y[idx2]
-      beta2 <- solve(t(X2) %*% X2) %*% t(X2) %*% y2
-      rss2 <- sum((y2 - X2 %*% beta2)^2)
+      fit2 <- .lm.fit(X2, y2)
+      rss2 <- sum(fit2$residuals^2)
       df2 <- n - tau - 2
 
       # F-statistic
