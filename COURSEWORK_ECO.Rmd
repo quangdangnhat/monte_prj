@@ -4,7 +4,7 @@ author: |
   | Nguyen Hoai Linh (ID: 279996)
   | Do Thi Huong (ID: 279995)
 date: "Academic Year: 2025/2026"
-fontsize: 12pt
+fontsize: 14pt
 documentclass: extarticle
 output:
   pdf_document:
@@ -32,8 +32,6 @@ header-includes:
   - \usepackage{hyperref}
   - \hypersetup{colorlinks=true, linkcolor=blue, urlcolor=blue}
   - \renewcommand{\contentsname}{Table of Contents}
-  - \renewcommand{\normalsize}{\fontsize{14}{17}\selectfont}
-  - \normalsize
 ---
 
 ```{r setup, include=FALSE}
