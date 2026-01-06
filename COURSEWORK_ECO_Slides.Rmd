@@ -38,7 +38,7 @@ knitr::opts_chunk$set(
   fig.align = 'center'
 )
 library(knitr)
-library(kableExtra)
+# Note: kableExtra removed to avoid tabu.sty dependency
 ```
 
 # Introduction
@@ -193,9 +193,9 @@ results_A <- data.frame(
 
 kable(results_A,
       caption = "Empirical Size and Power at 5% Significance Level",
+      format = "latex",
       booktabs = TRUE,
-      align = 'c') %>%
-  kable_styling(latex_options = c("hold_position"))
+      align = 'c')
 ```
 
 ## Part A: Key Findings
@@ -298,9 +298,9 @@ results_B <- data.frame(
 
 kable(results_B,
       caption = "QTE Estimates with Bootstrap P-values",
+      format = "latex",
       booktabs = TRUE,
-      align = 'c') %>%
-  kable_styling(latex_options = c("hold_position", "scale_down"))
+      align = 'c')
 ```
 
 ## Part B: Key Findings
