@@ -185,23 +185,13 @@ $$\sigma_t^2 = 1 + \delta \cdot I(t/N > 0.5)$$
 
 ## Part A: Results
 
-```{r part-a-results}
-# Results table
-results_A <- data.frame(
-  Delta = c(0, 1, 3),
-  `Sup-GQ` = c(0.058, 0.413, 0.974),
-  `Fisher G` = c(0.046, 0.690, 0.998),
-  `Breusch-Pagan` = c(0.048, 0.041, 0.051),
-  `White` = c(0.041, 0.049, 0.045),
-  check.names = FALSE
-)
+**Table: Empirical Size and Power at 5% Significance Level**
 
-kable(results_A,
-      caption = "Empirical Size and Power at 5% Significance Level",
-      format = "latex",
-      booktabs = TRUE,
-      align = 'c')
-```
+| Delta | Sup-GQ | Fisher G | Breusch-Pagan | White |
+|:-----:|:------:|:--------:|:-------------:|:-----:|
+| 0     | 0.058  | 0.046    | 0.048         | 0.041 |
+| 1     | 0.413  | 0.690    | 0.041         | 0.049 |
+| 3     | 0.974  | 0.998    | 0.051         | 0.045 |
 
 ## Part A: Key Findings
 
@@ -289,24 +279,13 @@ $\Rightarrow$ Use first-differenced EPU ($\Delta$EPU)
 
 ## Part B: Results
 
-```{r part-b-results}
-# QTE Results table
-results_B <- data.frame(
-  `Quantile` = c(0.10, 0.50, 0.90),
-  `State` = c("Low loss", "Median", "High gain"),
-  `QTE` = c(0.00393, 0.04361, 0.13192),
-  `95% CI` = c("[-0.00, 0.06]", "[0.00, 0.02]", "[-0.00, 0.05]"),
-  `p-value` = c(0.582, 0.004, 0.002),
-  `Significant` = c("No", "Yes***", "Yes***"),
-  check.names = FALSE
-)
+**Table: QTE Estimates with Bootstrap P-values**
 
-kable(results_B,
-      caption = "QTE Estimates with Bootstrap P-values",
-      format = "latex",
-      booktabs = TRUE,
-      align = 'c')
-```
+| Quantile | State     | QTE     | p-value | Significant |
+|:--------:|:---------:|:-------:|:-------:|:-----------:|
+| 0.10     | Low loss  | 0.00393 | 0.582   | No          |
+| 0.50     | Median    | 0.04361 | 0.004   | Yes***      |
+| 0.90     | High gain | 0.13192 | 0.002   | Yes***      |
 
 ## Part B: Key Findings
 
