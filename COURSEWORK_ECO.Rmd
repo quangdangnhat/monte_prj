@@ -104,6 +104,40 @@ The main difference between the Goldfeld-Quandt (GQ) test and the Sup-Goldfeld-Q
 
 #### Sup-GQ Test Implementation
 
+In this research, we conducted the Sup-GQ test to investigate the heteroscedasticity error with the following testing steps:
+
+**Step 1: Hypothesis**
+
+- $H_0$: The variance of error term is constant (homoscedasticity)
+- $H_a$: The variance of error term changes at an unknown break point (heteroscedasticity)
+
+**Step 2: Build regression model**
+
+$$y_t = 1 + x_t + \varepsilon_t, \quad x_t \sim N(0, 1)$$
+
+**Step 3: Specify the set of admissible break points (trimming)**
+
+We apply a trimming proportion of 15% at both the beginning and the end of the data series.
+
+**Step 4: Calculate the GQ test statistic**
+
+$$\gamma = \frac{RSS_2/df}{RSS_1/df}$$
+
+**Step 5: Construct the Sup-GQ test statistic**
+
+$$F_{\text{Sup-GQ}} = \sup_{\tau \in \mathcal{T}} F_{GQ}(\tau)$$
+
+**Step 6: Find the critical value**
+
+To determine the critical value for the specified level of significance ($\alpha$), use the F Table. The values of $df_1$ and $df_2$ in this test are identical ($df_1 = df_2$).
+
+**Step 7: Decision rule**
+
+- If $F_{\text{calculated}} < F_{\text{critical}}$: Accept the Null Hypothesis
+- If $F_{\text{calculated}} > F_{\text{critical}}$: Reject the Null Hypothesis
+
+The Sup-Goldfeld-Quandt test is a powerful test for heteroscedasticity in regression models when the break point is unknown. By examining all possible split points and taking the largest test statistic, this method avoids arbitrary dependence on the researcher's choice. However, this very feature makes the test statistic's distribution non-standard, and it does not follow an F-distribution. Therefore, theoretical critical values cannot be applied. To overcome this, Wild Bootstrap or Monte Carlo simulations are used to estimate the empirical distribution and produce a test with good performance, stable size, and high power.
+
 ```{r sup-gq-functions}
 # Load required packages
 packages <- c("quantreg", "tseries", "zoo", "xts", "dplyr", "lmtest", "sandwich")
@@ -390,15 +424,30 @@ cat("• Higher power = better at detecting heteroscedasticity\n")
 
 ### Discussion of Results
 
-Based on the result table, we can observe the following:
+Based on the result table from the Monte Carlo simulation, we can observe the following:
 
-**With delta = 0** (no heteroscedasticity): The detection rates for all four tests should be close to 5%, indicating that all tests perform well at the nominal significance level.
+**With $\delta = 0$ (no heteroscedasticity):**
 
-**With delta = 1** (variance doubles): The Fisher method typically shows higher power than Sup-GQ, while Breusch-Pagan and White tests show lower power because they rely on the explanatory variable $x$ rather than changes in variance across positions.
+When $\delta = 0$, the variance of the model does not change, meaning there is no heteroscedasticity in the model. The detection rates for the four tests—Sup-GQ, Fisher method, Breusch-Pagan, and White test—are 5.8%, 4.6%, 4.8%, and 4.1%, respectively. These values are all close to 5%, indicating that all four tests perform well at the nominal significance level and maintain proper size control.
 
-**With delta = 3** (variance quadruples): The Sup-GQ and Fisher methods show very high detection rates (often >95%), while Breusch-Pagan and White tests still show relatively low power.
+**With $\delta = 1$ (variance doubles after midpoint):**
 
-The Fisher method remains the most effective test for detecting heteroscedasticity when the break point is unknown, demonstrating its optimality in aggregating information from all candidate split points.
+When the model variance doubles after the breakpoint, the power of Sup-GQ is 0.413, meaning it detects heteroscedasticity about 41.3% of the time. The Fisher method shows a power of 0.690, detecting about 69% of heteroscedasticity cases—significantly higher than Sup-GQ. In contrast, the Breusch-Pagan test has a power of only 0.041 (4.1%), and the White test detects heteroscedasticity at about 4.9%. These low values for Breusch-Pagan and White indicate that they fail to detect the variance break.
+
+**With $\delta = 3$ (variance quadruples after midpoint):**
+
+When the model variance quadruples after the breakpoint, the power of Sup-GQ reaches 0.974, showing a very high ability to detect heteroscedasticity (97.4%). The Fisher test is even stronger, with an almost perfect detection rate of 99.8%. Meanwhile, the power of Breusch-Pagan remains low at 5.1%, and the White test also has a very low detection rate of about 4.5%.
+
+**Key Insights:**
+
+From these results, it is clear that when the variance change is small, all four tests perform similarly. However, when the variance change is large, Sup-GQ and Fisher method have significantly higher detection rates than the other two tests. This difference arises from how each test calculates its critical value:
+
+- **Sup-GQ and Fisher method** rely on changes in variance across positions in the sample
+- **Breusch-Pagan and White tests** mainly rely on the explanatory variable $x$
+
+Since the heteroscedasticity in our simulation is driven by a structural break at a specific time point (not by the level of $x$), Breusch-Pagan and White tests cannot detect it effectively.
+
+**Conclusion:** Regardless of the magnitude of the variance change, the Fisher method remains the most effective test for detecting heteroscedasticity when the break point is unknown, demonstrating its optimality in aggregating information from all candidate split points rather than relying solely on the maximum statistic.
 
 \newpage
 
@@ -756,6 +805,38 @@ cat("*** To run full analysis, execute the code chunk above separately ***\n\n")
 
 ## Empirical Results
 
+### Hypothesis Testing Framework
+
+**Hypothesis:**
+
+- $H_0$: $QTE_{\tau,k} = 0$ (no information transfer from EPU to Return)
+  - With $\tau = 0.1$: $H_0$ states no information transfer from EPU to the lowest 10% of returns
+  - With $\tau = 0.5$: $H_0$ states no information transfer from EPU to the median of returns
+  - With $\tau = 0.9$: $H_0$ states no information transfer from EPU to the 90th percentile of returns
+
+- $H_a$: $QTE_{\tau,k} > 0$ (information transfer from EPU to Return)
+
+**Test Statistic:**
+
+$$QTE_{\tau} = \log\left(\frac{\sum_t \rho_{\tau}(\hat{u}_{1,t})}{\sum_t \rho_{\tau}(\hat{u}_{2,t})}\right)$$
+
+**P-value Calculation:**
+
+The p-value is calculated using the bootstrap distribution:
+
+$$\text{P-value}(\tau, k) = \frac{1}{B} \sum_{b=1}^{B} I\left(\hat{Z}^{*b} \geq \widehat{QTE}(\tau, k)\right)$$
+
+where:
+- $B$ is the number of bootstrap replications
+- $\widehat{QTE}(\tau, k)$ is the estimated Quantile Transfer Entropy computed from the original data
+- $\hat{Z}^{*b}$ represents the QTE statistics obtained from bootstrap samples
+
+**Decision Rule:**
+
+We reject $H_0$ if the p-value of the testing is lower than the significance level $\alpha = 0.05$.
+
+### Results Table
+
 ```{r display-results-b}
 cat("\n")
 cat("═══════════════════════════════════════════════════════════════════════════\n")
@@ -795,20 +876,39 @@ for (i in 1:nrow(results_B)) {
 }
 ```
 
+### Detailed Analysis of Results
+
+Based on the statistical results obtained from running the model, we observe that the QTE values are non-negative across all three quantiles, indicating that EPU has the potential to transmit information and affect financial returns. However, the magnitude and statistical significance of this effect differ across quantile levels $\tau$.
+
+**At the lower quantile $\tau = 0.1$ (Low loss):**
+
+This quantile represents the lowest 10% of S&P 500 stock returns over the period from early 2015 to the end of 2025. The estimated QTE value is relatively small at 0.0039. The corresponding p-value is 0.582, and the 95% bootstrap confidence interval includes zero; therefore, we **fail to reject the null hypothesis**. This result indicates that EPU does not transmit statistically significant information to the lowest 10% of return outcomes.
+
+**At the median quantile $\tau = 0.5$ (Median):**
+
+The estimated QTE increases to 0.0436. The bootstrap p-value equals 0.004, which is well below the significance level $\alpha = 0.05$, and the corresponding bootstrap confidence interval $[0.00000, 0.02420]$ lies entirely above zero. These results provide **strong evidence to reject the null hypothesis**. This finding implies that Economic Policy Uncertainty (EPU) contains significant predictive information for Financial Returns under normal market conditions.
+
+**At the upper quantile $\tau = 0.9$ (High gain):**
+
+This quantile represents periods of large positive returns. The estimated QTE rises substantially to 0.13192. The associated bootstrap p-value is extremely small (0.002), again below the 5% significance level, indicating a **strong rejection of the null hypothesis**. This result suggests that EPU exerts a pronounced and statistically significant impact on returns at the highest quantile of the return distribution.
+
 ### Economic Implications
 
-Based on the statistical results, we observe that the QTE values are non-negative across all three quantiles, indicating that EPU has the potential to transmit information and affect financial returns. However, the magnitude and statistical significance of this effect differ across quantile levels.
+**Key Finding: Nonlinear Relationship**
 
-**Lower Quantile ($\tau = 0.1$):**
-Represents the lowest 10% of S&P 500 stock returns. If QTE is not significant at this quantile, it suggests that EPU does not transmit statistically significant information during extreme market downturns.
+These findings reveal a **nonlinear relationship** between EPU and Financial Returns. While EPU does not appear to effectively signal downside risks during extreme market downturns ($\tau = 0.1$), it plays a crucial role in influencing return dynamics under normal and strongly bullish market conditions ($\tau = 0.5$ and $\tau = 0.9$).
 
-**Median Quantile ($\tau = 0.5$):**
-If the bootstrap p-value is below 0.05, this provides strong evidence that Economic Policy Uncertainty contains significant predictive information for Financial Returns under normal market conditions.
+**Information Transmission Pattern:**
 
-**Upper Quantile ($\tau = 0.9$):**
-Represents periods of large positive returns. Significant QTE at this quantile suggests that EPU exerts a pronounced impact on returns during favorable market states.
+The marked increase in QTE values from the median quantile ($\tau = 0.5$, QTE = 0.0436) to the upper quantile ($\tau = 0.9$, QTE = 0.1319) indicates that **information transmission from EPU is strongest during favorable market states**.
 
-These findings reveal a potentially nonlinear relationship between EPU and Financial Returns. EPU indices can provide valuable information for both investors and policymakers when analyzing market reactions across different market regimes.
+**Practical Implications:**
+
+From an economic perspective, EPU indices can therefore provide valuable information for both investors and policymakers when analyzing market reactions across different market regimes, rather than being viewed solely as a source of negative risk. Specifically:
+
+- **For investors:** EPU can serve as a predictive indicator for returns during normal and bullish market conditions
+- **For policymakers:** Understanding the asymmetric effects of policy uncertainty can help in designing more effective economic policies
+- **For risk managers:** The lack of significant effect at lower quantiles suggests that EPU alone may not be sufficient for extreme downside risk prediction
 
 \newpage
 
