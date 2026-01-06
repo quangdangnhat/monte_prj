@@ -948,6 +948,10 @@ Regarding the analysis of information transmission, we used Quantile Transfer En
 
 # Appendix: Session Information
 
-```{r session-info}
+\small
+
+```{r session-info, comment=NA}
 sessionInfo()
 ```
+
+\normalsize
