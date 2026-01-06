@@ -26,6 +26,11 @@ header-includes:
   - \usepackage{booktabs}
   - \setbeamertemplate{navigation symbols}{}
   - \setbeamertemplate{footline}[frame number]
+  - \setbeamertemplate{blocks}[default]
+  - \setbeamertemplate{title page}[default]
+  - \setbeamertemplate{frametitle}[default]
+  - \setbeamertemplate{itemize items}[circle]
+  - \setbeamertemplate{enumerate items}[default]
 ---
 
 ```{r setup, include=FALSE}
