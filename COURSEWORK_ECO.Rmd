@@ -4,6 +4,7 @@ author: |
   | Nguyen Hoai Linh (ID: 279996)
   | Do Thi Huong (ID: 279995)
 date: "Academic Year: 2025/2026"
+fontsize: 14pt
 output:
   pdf_document:
     toc: true
