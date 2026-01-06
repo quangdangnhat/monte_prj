@@ -1,0 +1,397 @@
+---
+title: "Financial Econometrics Coursework"
+subtitle: "Heteroscedasticity Testing & Quantile Transfer Entropy"
+author: |
+  | Nguyen Hoai Linh (ID: 279996)
+  | Do Thi Huong (ID: 279995)
+date: "Academic Year: 2025/2026"
+output:
+  beamer_presentation:
+    theme: "Madrid"
+    colortheme: "dolphin"
+    fonttheme: "structurebold"
+    slide_level: 2
+    toc: true
+    fig_caption: true
+    latex_engine: xelatex
+  ioslides_presentation:
+    widescreen: true
+    transition: faster
+    logo: null
+  powerpoint_presentation:
+    slide_level: 2
+header-includes:
+  - \usepackage{amsmath}
+  - \usepackage{amssymb}
+  - \usepackage{booktabs}
+  - \setbeamertemplate{navigation symbols}{}
+  - \setbeamertemplate{footline}[frame number]
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 7,
+  fig.height = 4,
+  fig.align = 'center'
+)
+library(knitr)
+library(kableExtra)
+```
+
+# Introduction
+
+## Research Overview
+
+**Objective:** Apply modern financial econometric methods to address:
+
+1. **Testing for structural changes in variance** (heteroscedasticity)
+2. **Measuring nonlinear information transmission** among economic variables
+
+**Methods:**
+
+- Monte Carlo simulation
+- Wild Bootstrap
+- Quantile Transfer Entropy (QTE)
+- Stationary Block Bootstrap
+
+## Research Structure
+
+\begin{center}
+\begin{tabular}{|c|l|}
+\hline
+\textbf{Part} & \textbf{Content} \\
+\hline
+A & Heteroscedasticity Testing \\
+  & - Sup Goldfeld-Quandt Test \\
+  & - Fisher's Combined P-Value Method \\
+  & - Monte Carlo Power Comparison \\
+\hline
+B & Quantile Transfer Entropy \\
+  & - EPU $\rightarrow$ S\&P 500 Returns \\
+  & - Stationary Block Bootstrap \\
+\hline
+\end{tabular}
+\end{center}
+
+# Part A: Heteroscedasticity Testing
+
+## Heteroscedasticity Problem
+
+**OLS Assumption:** $\text{Var}(u_t) = \sigma^2$ (constant variance)
+
+**When violated (Heteroscedasticity):**
+
+- Standard errors become incorrect
+- t-tests, F-tests, confidence intervals unreliable
+- Statistical inference invalid
+
+**Challenge:** Break point $\tau$ is **unknown**
+
+$$H_0: \sigma_1^2 = \sigma_2^2 \quad \text{(homoscedasticity)}$$
+$$H_1: \sigma_1^2 \neq \sigma_2^2 \quad \text{(heteroscedasticity)}$$
+
+## Goldfeld-Quandt Test
+
+**Idea:** Split data at point $\tau$, compare variances
+
+$$s_1^2 = \frac{\hat{u}_1'\hat{u}_1}{T_1 - k} \quad \text{and} \quad s_2^2 = \frac{\hat{u}_2'\hat{u}_2}{T_2 - k}$$
+
+**F-statistic:**
+
+$$F_{GQ}(\tau) = \frac{RSS_2 / df_2}{RSS_1 / df_1}$$
+
+**Problem:** Requires known break point $\tau$
+
+## Sup-GQ Test
+
+**Solution:** Test all possible break points
+
+$$F_{\text{Sup-GQ}} = \sup_{\tau \in \mathcal{T}} F_{GQ}(\tau)$$
+
+where $\mathcal{T}$ is the set of admissible split points (after 15% trimming)
+
+**Issue:** Distribution is **non-standard**
+
+- Cannot use F-table critical values
+- Need **Wild Bootstrap** for inference
+
+## Fisher's Combined P-Value Method
+
+**Proposal:** Aggregate information from ALL split points
+
+$$G = -2 \sum_{m=1}^{M} \log(p_m)$$
+
+**Advantages over Sup-GQ:**
+
+| Sup-GQ | Fisher's G |
+|--------|------------|
+| Uses only maximum | Uses all information |
+| Sensitive to outliers | More robust |
+| Single break detection | Distributed changes |
+
+## Why Fisher's Method?
+
+**Justification:**
+
+1. **Information Aggregation:** Combines evidence from all split points
+2. **Power Against Distributed Alternatives:** Better for gradual variance changes
+3. **Statistical Foundation:** Based on well-established theory
+
+**Critical Values:**
+
+- P-values are **dependent** (overlapping subsamples)
+- Distribution is **non-standard**
+- Must use **Wild Bootstrap**
+
+## Wild Bootstrap Procedure
+
+**Steps:**
+
+1. Fit null model: $\hat{y}_t = \hat{\beta}_0 + \hat{\beta}_1 x_t$
+2. Get residuals: $\hat{e}_t = y_t - \hat{y}_t$
+3. Generate Rademacher weights: $v_t \sim \{-1, +1\}$
+4. Bootstrap sample: $y_t^* = \hat{y}_t + \hat{e}_t \cdot v_t$
+5. Compute test statistics
+6. Repeat $B$ times
+
+**P-value:**
+$$\text{p-value} = \frac{1}{B} \sum_{b=1}^{B} \mathbf{1}(T^{*b} \geq T_{obs})$$
+
+## Monte Carlo Design
+
+**Model:**
+$$y_t = 1 + x_t + \varepsilon_t, \quad x_t \sim N(0,1)$$
+
+**Error variance:**
+$$\sigma_t^2 = 1 + \delta \cdot I(t/N > 0.5)$$
+
+**Parameters:**
+
+| Parameter | Value |
+|-----------|-------|
+| Sample size $N$ | 100 |
+| MC replications $R$ | 1000 |
+| Bootstrap reps $B$ | 499 |
+| Trimming | 15% |
+| $\delta$ | 0, 1, 3 |
+
+## Part A: Results
+
+```{r part-a-results}
+# Results table
+results_A <- data.frame(
+  Delta = c(0, 1, 3),
+  `Sup-GQ` = c(0.058, 0.413, 0.974),
+  `Fisher G` = c(0.046, 0.690, 0.998),
+  `Breusch-Pagan` = c(0.048, 0.041, 0.051),
+  `White` = c(0.041, 0.049, 0.045),
+  check.names = FALSE
+)
+
+kable(results_A,
+      caption = "Empirical Size and Power at 5% Significance Level",
+      booktabs = TRUE,
+      align = 'c') %>%
+  kable_styling(latex_options = c("hold_position"))
+```
+
+## Part A: Key Findings
+
+**Size ($\delta = 0$):** All tests $\approx 5\%$ (correct size)
+
+**Power ($\delta = 1, 3$):**
+
+- **Fisher's G:** Highest power (69%, 99.8%)
+- **Sup-GQ:** Good power (41.3%, 97.4%)
+- **BP & White:** Low power (~5%)
+
+**Why BP & White fail?**
+
+- Designed for variance depending on $X$
+- Not suitable for structural breaks
+
+**Conclusion:** Fisher's Method is most effective
+
+# Part B: Quantile Transfer Entropy
+
+## Background
+
+**Question:** Does Economic Policy Uncertainty (EPU) affect S&P 500 returns?
+
+**Data:**
+
+- S&P 500 from Yahoo Finance
+- EPU Index (policyuncertainty.com)
+- Period: 2015-01-01 to 2025-12-31
+
+**Why QTE?**
+
+- Examines information flow at **different quantiles**
+- Captures **asymmetric effects**
+
+## QTE Framework
+
+**Definition:** Information transfer from $X$ to $Y$ at quantile $\tau$
+
+**Quantiles interpretation:**
+
+| $\tau$ | State | Market Condition |
+|--------|-------|------------------|
+| 0.10 | Lower tail | Extreme losses |
+| 0.50 | Median | Normal conditions |
+| 0.90 | Upper tail | Extreme gains |
+
+## QTE Calculation
+
+**Restricted Model:**
+$$Q_\tau(y_t | y_{t-k}) = \alpha_0 + \alpha_1 y_{t-k}$$
+
+**Unrestricted Model:**
+$$Q_\tau(y_t | y_{t-k}, x_{t-k}) = \beta_0 + \beta_1 y_{t-k} + \beta_2 x_{t-k}$$
+
+**Check function:**
+$$\rho_\tau(u) = u \cdot (\tau - I(u < 0))$$
+
+**QTE statistic:**
+$$\text{QTE}_\tau = \log\left(\frac{\sum_t \rho_\tau(\hat{u}_{1,t})}{\sum_t \rho_\tau(\hat{u}_{2,t})}\right)$$
+
+## Hypothesis Testing
+
+$$H_0: \text{QTE}_{\tau,k} = 0 \quad \text{(no information transfer)}$$
+$$H_a: \text{QTE}_{\tau,k} > 0 \quad \text{(information transfer exists)}$$
+
+**Problem:** QTE distribution is **non-standard**
+
+**Solution:** Stationary Block Bootstrap
+
+- Preserves time-series dependence
+- Block length: $l = \lceil n^{1/3} \rceil$
+
+## Stationarity Testing
+
+**ADF Test Results:**
+
+| Series | Dickey-Fuller | p-value | Conclusion |
+|--------|---------------|---------|------------|
+| S&P 500 Returns | -5.105 | 0.01 | Stationary |
+| EPU | -2.725 | 0.2755 | Non-stationary |
+| $\Delta$EPU | < -3 | < 0.05 | Stationary |
+
+$\Rightarrow$ Use first-differenced EPU ($\Delta$EPU)
+
+## Part B: Results
+
+```{r part-b-results}
+# QTE Results table
+results_B <- data.frame(
+  `Quantile` = c(0.10, 0.50, 0.90),
+  `State` = c("Low loss", "Median", "High gain"),
+  `QTE` = c(0.00393, 0.04361, 0.13192),
+  `95% CI` = c("[-0.00, 0.06]", "[0.00, 0.02]", "[-0.00, 0.05]"),
+  `p-value` = c(0.582, 0.004, 0.002),
+  `Significant` = c("No", "Yes***", "Yes***"),
+  check.names = FALSE
+)
+
+kable(results_B,
+      caption = "QTE Estimates with Bootstrap P-values",
+      booktabs = TRUE,
+      align = 'c') %>%
+  kable_styling(latex_options = c("hold_position", "scale_down"))
+```
+
+## Part B: Key Findings
+
+**At $\tau = 0.1$ (Extreme Losses):**
+
+- QTE = 0.0039, p-value = 0.582
+- **Not significant** $\Rightarrow$ EPU does not predict extreme losses
+
+**At $\tau = 0.5$ (Median):**
+
+- QTE = 0.0436, p-value = 0.004
+- **Significant** $\Rightarrow$ EPU predicts normal returns
+
+**At $\tau = 0.9$ (Extreme Gains):**
+
+- QTE = 0.1319, p-value = 0.002
+- **Significant** $\Rightarrow$ EPU strongly predicts high returns
+
+## Economic Implications
+
+**Nonlinear Relationship:**
+
+- EPU effect varies across return distribution
+- Stronger effect in **upper quantiles**
+
+**Practical Applications:**
+
+1. **Risk Management:** EPU less useful for downside risk
+2. **Trading Strategies:** EPU signals for bullish conditions
+3. **Policy Analysis:** Uncertainty affects market regimes differently
+
+# Conclusion
+
+## Summary
+
+**Part A - Heteroscedasticity Testing:**
+
+- Fisher's G method outperforms Sup-GQ
+- Wild Bootstrap essential for valid inference
+- BP & White tests unsuitable for structural breaks
+
+**Part B - QTE Analysis:**
+
+- EPU affects S&P 500 returns heterogeneously
+- No effect at lower quantile ($\tau = 0.1$)
+- Strong effect at median and upper quantiles
+
+## Contributions
+
+1. **Methodological:** Combined p-value approach for heteroscedasticity
+2. **Empirical:** QTE evidence of EPU $\rightarrow$ Returns
+3. **Practical:** Bootstrap methods for non-standard distributions
+
+## Future Research
+
+- Extend to other uncertainty indices (VIX, GPR)
+- Multiple structural breaks
+- Higher frequency data
+- International markets comparison
+
+# Thank You
+
+## Questions?
+
+\begin{center}
+\Large Thank you for your attention!
+
+\vspace{1cm}
+
+\normalsize
+Nguyen Hoai Linh (ID: 279996)\\
+Do Thi Huong (ID: 279995)
+
+\vspace{0.5cm}
+
+Academic Year: 2025/2026
+\end{center}
+
+## References
+
+\small
+
+1. Goldfeld & Quandt (1965). Some tests for homoscedasticity. *JASA*
+
+2. Fisher (1932). *Statistical Methods for Research Workers*
+
+3. White (1980). A heteroskedasticity-consistent covariance matrix estimator. *Econometrica*
+
+4. Koenker & Bassett (1978). Regression quantiles. *Econometrica*
+
+5. Politis & Romano (1994). The stationary bootstrap. *JASA*
+
+6. Baker, Bloom & Davis (2016). Measuring economic policy uncertainty. *QJE*
